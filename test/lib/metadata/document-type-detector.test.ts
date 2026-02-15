@@ -32,4 +32,10 @@ describe('detectDocumentType', () => {
 			'otro',
 		)
 	})
+
+	it('detects contrato with lowercase legal entities (s.a. de c.v.)', () => {
+		const text =
+			'CONTRATO de prestación de servicios entre empresa s.a. de c.v. y...\nCLÁUSULA PRIMERA...\nCLÁUSULA SEGUNDA...'
+		expect(detectDocumentType(text)).toBe('contrato')
+	})
 })

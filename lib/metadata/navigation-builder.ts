@@ -41,7 +41,7 @@ function detectDocumentHazards(lines: string[]): Record<string, string> {
 	const transitorioLine = lines.findIndex((l) =>
 		/^(?:TRANSITORIOS|ART[IÍ]CULOS?\s+TRANSITORIOS)/i.test(l.trim()),
 	)
-	if (transitorioLine > 0) {
+	if (transitorioLine >= 0) {
 		const ratio = (lines.length - transitorioLine) / lines.length
 		if (ratio > 0.2) {
 			warnings.transitorios_noise =
@@ -53,7 +53,7 @@ function detectDocumentHazards(lines: string[]): Record<string, string> {
 	const annexLine = lines.findIndex((l) =>
 		/^ANEXO\s+\d+\s+DE\s+LAS\s+REGLAS\s+GENERALES/i.test(l.trim()),
 	)
-	if (annexLine > 0) {
+	if (annexLine >= 0) {
 		warnings.outdated_fines =
 			'Fine amounts in article text may be outdated. ' +
 			`The updated amounts are in the Annex section starting at line ${annexLine + 1}. ` +

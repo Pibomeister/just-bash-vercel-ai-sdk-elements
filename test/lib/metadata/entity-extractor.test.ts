@@ -75,5 +75,40 @@ describe('extractEntities', () => {
 			const result = extractEntities(sentencia)
 			expect(result.legalReferences.some((r) => r.type === 'dof')).toBe(true)
 		})
+
+		it('keeps two different NOM references on the same line', () => {
+			const text = 'Cumplir con NOM-001-SEDE-2012 y NOM-002-SEDE-2010 vigentes.'
+			const result = extractEntities(text)
+			const noms = result.legalReferences.filter((r) => r.type === 'nom')
+			expect(noms).toHaveLength(2)
+			expect(noms.some((r) => r.reference.includes('NOM-001'))).toBe(true)
+			expect(noms.some((r) => r.reference.includes('NOM-002'))).toBe(true)
+		})
+	})
+
+	describe('definedTerms substring guard', () => {
+		it('does not match a defined term inside a longer word', () => {
+			const text =
+				'\u201CLEY\u201D significa la Ley Aduanera.\nLas LEYES vigentes aplican.\nLa LEY establece.'
+			const result = extractEntities(text)
+			const leyTerm = result.definedTerms.find((t) => t.term === 'LEY')
+			expect(leyTerm).toBeDefined()
+			// Line 3 ("La LEY establece.") should be a usage line
+			expect(leyTerm!.usageLines).toContain(3)
+			// Line 2 ("Las LEYES vigentes aplican.") should NOT be a usage line
+			expect(leyTerm!.usageLines).not.toContain(2)
+		})
+
+		it('matches accented defined terms without false boundaries', () => {
+			const text =
+				'\u201C\u00C1REA\u201D designa la zona.\nEl \u00C1REA asignada.\nLas \u00C1REAS no aplican.'
+			const result = extractEntities(text)
+			const areaTerm = result.definedTerms.find((t) => t.term === '\u00C1REA')
+			expect(areaTerm).toBeDefined()
+			// "El ÁREA asignada" should be a usage line
+			expect(areaTerm!.usageLines).toContain(2)
+			// "Las ÁREAS no aplican" should NOT be (substring)
+			expect(areaTerm!.usageLines).not.toContain(3)
+		})
 	})
 })

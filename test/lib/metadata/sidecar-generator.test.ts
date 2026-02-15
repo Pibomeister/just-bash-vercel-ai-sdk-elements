@@ -65,4 +65,13 @@ describe('generateSidecar', () => {
 		const b = generateSidecar(ley, 'ley.md')
 		expect({ ...a, generatedAt: '' }).toEqual({ ...b, generatedAt: '' })
 	})
+
+	it('handles empty document without throwing', () => {
+		const sidecar = generateSidecar('', 'empty.md')
+		expect(sidecar.document.totalLines).toBe(1)
+		expect(sidecar.document.totalWords).toBe(0)
+		expect(sidecar.tableOfContents).toEqual([])
+		expect(sidecar.entities.dates).toEqual([])
+		expect(sidecar.document.type).toBe('otro')
+	})
 })

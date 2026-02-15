@@ -59,4 +59,15 @@ describe('buildNavigation', () => {
 			expect(Object.keys(nav.sectionsByTopic).length).toBeGreaterThan(0)
 		})
 	})
+
+	describe('transitorios at document start (findIndex === 0)', () => {
+		it('generates transitorios_noise warning when TRANSITORIOS is the first line', () => {
+			const text =
+				'TRANSITORIOS\nPrimero. Vigencia.\nSegundo. Se derogan.\nTercero. Aplicabilidad.\nCuarto. Disposiciones.'
+			const toc = extractHeadings(text)
+			const nav = buildNavigation(text, toc, 'ley')
+			expect(nav.warnings.transitorios_noise).toBeDefined()
+			expect(nav.warnings.transitorios_noise).toContain('100%')
+		})
+	})
 })

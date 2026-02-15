@@ -30,14 +30,24 @@ export interface RegexMatch {
 }
 
 /** Run a regex pattern against text and return all matches with 1-based line numbers. */
-export function matchAll(text: string, pattern: string): RegexMatch[] {
-	const lines = text.split('\n')
+export function matchAll(
+	textOrLines: string | string[],
+	pattern: string,
+): RegexMatch[] {
+	const lines = Array.isArray(textOrLines)
+		? textOrLines
+		: textOrLines.split('\n')
 	const re = new RegExp(pattern, 'gi')
 	const results: RegexMatch[] = []
 
 	for (let i = 0; i < lines.length; i++) {
+		re.lastIndex = 0
 		let m: RegExpExecArray | null
 		while ((m = re.exec(lines[i])) !== null) {
+			if (m[0].length === 0) {
+				re.lastIndex++
+				continue
+			}
 			results.push({ match: m[0], line: i + 1, index: m.index })
 		}
 	}

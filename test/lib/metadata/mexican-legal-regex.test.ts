@@ -104,4 +104,9 @@ describe('matchAll', () => {
 			line: 4,
 		})
 	})
+
+	it('does not infinite-loop on a pattern that can match empty strings', () => {
+		const results = matchAll('test line', '(?:x)?')
+		expect(results).toBeDefined()
+	})
 })

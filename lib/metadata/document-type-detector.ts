@@ -26,7 +26,7 @@ const SIGNALS: Record<DocumentType, Signal[]> = {
 		{ pattern: /\bCONVENIO\b/i, weight: 3 },
 		{ pattern: /en lo sucesivo/i, weight: 3 },
 		{ pattern: /DECLARACIONES/i, weight: 2 },
-		{ pattern: new RegExp(MEXICAN_LEGAL_REGEX.legalEntities), weight: 1 },
+		{ pattern: new RegExp(MEXICAN_LEGAL_REGEX.legalEntities, 'i'), weight: 1 },
 	],
 	sentencia: [
 		{ pattern: new RegExp(MEXICAN_LEGAL_REGEX.considerandos, 'i'), weight: 4 },

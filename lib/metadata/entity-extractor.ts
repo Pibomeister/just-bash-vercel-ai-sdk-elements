@@ -5,39 +5,41 @@ const DEFINED_TERM_RE =
 	/[\u201C\u201D""]([^\u201C\u201D""]{2,60})[\u201C\u201D""]/g
 
 export function extractEntities(text: string): Entities {
-	const dates = matchAll(text, MEXICAN_LEGAL_REGEX.spanishDates).map((m) => ({
+	const lines = text.split('\n')
+
+	const dates = matchAll(lines, MEXICAN_LEGAL_REGEX.spanishDates).map((m) => ({
 		value: m.match,
-		context: extractContext(text, m.line),
+		context: extractContext(lines, m.line),
 		line: m.line,
 	}))
 
-	const pesoMatches = matchAll(text, MEXICAN_LEGAL_REGEX.pesos)
-	const umaMatches = matchAll(text, MEXICAN_LEGAL_REGEX.umas)
+	const pesoMatches = matchAll(lines, MEXICAN_LEGAL_REGEX.pesos)
+	const umaMatches = matchAll(lines, MEXICAN_LEGAL_REGEX.umas)
 	const monetaryAmounts = [...pesoMatches, ...umaMatches].map((m) => ({
 		value: m.match,
-		context: extractContext(text, m.line),
+		context: extractContext(lines, m.line),
 		line: m.line,
 	}))
 
 	const definedTerms = extractDefinedTerms(text)
 
 	const legalReferences = [
-		...matchAll(text, MEXICAN_LEGAL_REGEX.noms).map((m) => ({
+		...matchAll(lines, MEXICAN_LEGAL_REGEX.noms).map((m) => ({
 			type: 'nom' as const,
 			reference: m.match,
 			line: m.line,
 		})),
-		...matchAll(text, MEXICAN_LEGAL_REGEX.dofShort).map((m) => ({
+		...matchAll(lines, MEXICAN_LEGAL_REGEX.dofShort).map((m) => ({
 			type: 'dof' as const,
 			reference: m.match,
 			line: m.line,
 		})),
-		...matchAll(text, MEXICAN_LEGAL_REGEX.dofLong).map((m) => ({
+		...matchAll(lines, MEXICAN_LEGAL_REGEX.dofLong).map((m) => ({
 			type: 'dof' as const,
 			reference: m.match,
 			line: m.line,
 		})),
-		...matchAll(text, MEXICAN_LEGAL_REGEX.tesis).map((m) => ({
+		...matchAll(lines, MEXICAN_LEGAL_REGEX.tesis).map((m) => ({
 			type: 'tesis' as const,
 			reference: m.match,
 			line: m.line,
@@ -46,7 +48,12 @@ export function extractEntities(text: string): Entities {
 
 	const uniqueRefs = legalReferences.filter(
 		(ref, idx, arr) =>
-			arr.findIndex((r) => r.line === ref.line && r.type === ref.type) === idx,
+			arr.findIndex(
+				(r) =>
+					r.line === ref.line &&
+					r.type === ref.type &&
+					r.reference === ref.reference,
+			) === idx,
 	)
 
 	return { dates, monetaryAmounts, definedTerms, legalReferences: uniqueRefs }
@@ -73,14 +80,15 @@ function extractDefinedTerms(text: string) {
 		}
 	}
 
+	// Unicode-aware word boundary: JS \b treats accented chars (Á, É, Ó) as
+	// non-word chars, so we use lookaround with Latin Extended character class.
+	const WC = String.raw`A-Za-z0-9_\u00C0-\u024F`
 	for (const [term, data] of termMap) {
+		const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+		const usageRe = new RegExp(`(?<![${WC}])${escaped}(?![${WC}])`)
 		for (let i = 0; i < lines.length; i++) {
 			if (i + 1 === data.definedAtLine) continue
-			if (
-				lines[i].includes(term) ||
-				lines[i].includes(`\u201C${term}\u201D`) ||
-				lines[i].includes(`"${term}"`)
-			) {
+			if (usageRe.test(lines[i])) {
 				data.usageLines.push(i + 1)
 			}
 		}
@@ -93,8 +101,7 @@ function extractDefinedTerms(text: string) {
 	}))
 }
 
-function extractContext(text: string, lineNum: number): string {
-	const lines = text.split('\n')
+function extractContext(lines: string[], lineNum: number): string {
 	const line = lines[lineNum - 1] ?? ''
 	return line.trim().slice(0, 120)
 }
