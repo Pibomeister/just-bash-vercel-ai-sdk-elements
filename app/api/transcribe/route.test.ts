@@ -40,6 +40,26 @@ describe('POST /api/transcribe', () => {
 		expect(data).toEqual({ text: 'Hello world' })
 	})
 
+	it('returns empty text when provider response has null text', async () => {
+		vi.mocked(openai.transcription).mockReturnValue('mock-model' as never)
+		vi.mocked(transcribe).mockResolvedValue({
+			text: null,
+		} as never)
+
+		const formData = new FormData()
+		formData.append(
+			'audio',
+			new Blob([new ArrayBuffer(16)], { type: 'audio/wav' }),
+		)
+		const req = createFormDataRequest(formData)
+
+		const res = await POST(req)
+		const data = await res.json()
+
+		expect(res.status).toBe(200)
+		expect(data).toEqual({ text: '' })
+	})
+
 	it('returns error message from Error instances', async () => {
 		vi.mocked(openai.transcription).mockReturnValue('mock-model' as never)
 		vi.mocked(transcribe).mockRejectedValue(

@@ -46,13 +46,14 @@ describe('POST /api/upload', () => {
 		vi.mocked(validateFileType).mockReturnValue(null)
 		vi.mocked(saveUploadedFile).mockResolvedValue({
 			documentId: 'doc-123',
+			filePath: '/uploads/doc-123/original.pdf',
 			metadata: {
 				documentId: 'doc-123',
 				fileName: 'doc-123.pdf',
 				originalName: 'report.pdf',
 				mimeType: 'application/pdf',
 				fileSize: 2048,
-				status: 'uploaded',
+				status: 'uploading',
 				uploadedAt: '2026-02-15T00:00:00.000Z',
 			},
 		})
@@ -86,13 +87,14 @@ describe('POST /api/upload', () => {
 		vi.mocked(validateFileType).mockReturnValue(null)
 		vi.mocked(saveUploadedFile).mockResolvedValue({
 			documentId: 'doc-789',
+			filePath: '/uploads/doc-789/original.pdf',
 			metadata: {
 				documentId: 'doc-789',
 				fileName: 'doc-789.pdf',
 				originalName: 'notes.pdf',
 				mimeType: 'application/pdf',
 				fileSize: 512,
-				status: 'uploaded',
+				status: 'uploading',
 				uploadedAt: '2026-02-15T00:00:00.000Z',
 			},
 		})

@@ -94,6 +94,27 @@ describe('saveUploadedFile', () => {
 		)
 	})
 
+	it('saves .docx files with original.docx extension', async () => {
+		const content = new Uint8Array([9, 8, 7])
+		const file = createMockFile(
+			'document.docx',
+			'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+			[content],
+		)
+
+		vi.mocked(fs.mkdir).mockResolvedValue(undefined)
+		vi.mocked(fs.writeFile).mockResolvedValue(undefined)
+
+		const result = await saveUploadedFile(file)
+		const docDir = path.join(uploadsDir, 'mock-uuid-1234')
+
+		expect(result.metadata.fileName).toBe('original.docx')
+		expect(fs.writeFile).toHaveBeenCalledWith(
+			path.join(docDir, 'original.docx'),
+			Buffer.concat([content]),
+		)
+	})
+
 	it('throws on invalid file type', async () => {
 		const file = createMockFile('notes.txt', 'text/plain', [])
 
@@ -205,8 +226,8 @@ describe('getOriginalFile', () => {
 		const fileBuffer = Buffer.from('pdf-content')
 
 		vi.mocked(fs.readFile)
-			.mockResolvedValueOnce(JSON.stringify(meta) as unknown as Buffer)
-			.mockResolvedValueOnce(fileBuffer)
+			.mockResolvedValueOnce(JSON.stringify(meta) as never)
+			.mockResolvedValueOnce(fileBuffer as never)
 
 		const result = await getOriginalFile('doc-123')
 
@@ -234,8 +255,8 @@ describe('listDocuments', () => {
 			'newer',
 		] as unknown as Awaited<ReturnType<typeof fs.readdir>>)
 		vi.mocked(fs.readFile)
-			.mockResolvedValueOnce(JSON.stringify(older) as unknown as Buffer)
-			.mockResolvedValueOnce(JSON.stringify(newer) as unknown as Buffer)
+			.mockResolvedValueOnce(JSON.stringify(older) as never)
+			.mockResolvedValueOnce(JSON.stringify(newer) as never)
 
 		const result = await listDocuments()
 
@@ -262,7 +283,7 @@ describe('listDocuments', () => {
 			'corrupt-dir',
 		] as unknown as Awaited<ReturnType<typeof fs.readdir>>)
 		vi.mocked(fs.readFile)
-			.mockResolvedValueOnce(JSON.stringify(valid) as unknown as Buffer)
+			.mockResolvedValueOnce(JSON.stringify(valid) as never)
 			.mockRejectedValueOnce(new Error('ENOENT'))
 
 		const result = await listDocuments()

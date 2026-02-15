@@ -7,7 +7,6 @@ export default defineConfig({
 		css: false,
 		passWithNoTests: true,
 		environment: 'node',
-		environmentMatchGlobs: [['hooks/**/*.test.ts*', 'jsdom']],
 		setupFiles: ['./test/setup.ts'],
 		coverage: {
 			provider: 'v8',

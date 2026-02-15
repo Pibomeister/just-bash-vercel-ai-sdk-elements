@@ -121,4 +121,34 @@ describe('parseDocumentWorkflow', () => {
 		expect(saveMarkdown).toHaveBeenCalledWith(DOC_ID, '')
 		expect(result.pageCount).toBe(0)
 	})
+
+	it('uses defaults when SDK response omits markdown pages and job id', async () => {
+		mockParse.mockResolvedValue({
+			// Missing markdown/pages should default to []
+			markdown: undefined,
+			// Missing job id should default to "unknown"
+			job: undefined,
+		})
+
+		const result = await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(saveMarkdown).toHaveBeenCalledWith(DOC_ID, '')
+		expect(updateMetadata).toHaveBeenCalledWith(DOC_ID, {
+			llamaJobId: 'unknown',
+		})
+		expect(result.pageCount).toBe(0)
+	})
+
+	it('uses fallback error message when parse step throws a non-Error value', async () => {
+		mockParse.mockRejectedValue('failed without Error object')
+
+		await expect(parseDocumentWorkflow(DOC_ID, FILE_NAME)).rejects.toBe(
+			'failed without Error object',
+		)
+
+		expect(updateMetadata).toHaveBeenCalledWith(DOC_ID, {
+			status: 'failed',
+			error: `LlamaParse failed for ${FILE_NAME}`,
+		})
+	})
 })

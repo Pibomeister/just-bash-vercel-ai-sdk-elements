@@ -1,8 +1,4 @@
-import {
-	type FileTreeNode,
-	isFileListingCommand,
-	parseFileTreeOutput,
-} from './parse-file-tree'
+import { isFileListingCommand, parseFileTreeOutput } from './parse-file-tree'
 
 // ---------------------------------------------------------------------------
 // isFileListingCommand
@@ -192,6 +188,24 @@ describe('parseFileTreeOutput', () => {
 		expect(result[0].name).toBe('a.txt')
 	})
 
+	it('ignores malformed ls -l rows with fewer than 9 columns', () => {
+		const stdout = [
+			'drwxr-xr-x 2 user staff',
+			'-rw-r--r--  1 user staff  100 Jan 10 10:00 valid.ts',
+		].join('\n')
+
+		const result = parseFileTreeOutput(stdout)
+
+		expect(result).toEqual([
+			{
+				name: 'valid.ts',
+				path: 'valid.ts',
+				type: 'file',
+				children: undefined,
+			},
+		])
+	})
+
 	it('strips symlink targets from ls -la output', () => {
 		const stdout = [
 			'lrwxr-xr-x  1 user staff   10 Jan 10 10:00 link -> target',
@@ -283,6 +297,64 @@ describe('parseFileTreeOutput', () => {
 		const result = parseFileTreeOutput(stdout, 'ls -la')
 
 		expect(result[0].path).toBe('file.ts')
+	})
+
+	it('ignores entries that normalize to an empty path', () => {
+		const stdout = './\n./src/index.ts'
+		const result = parseFileTreeOutput(stdout)
+
+		expect(result).toHaveLength(1)
+		expect(result[0].name).toBe('src')
+		expect(result[0].children?.[0]).toEqual({
+			name: 'index.ts',
+			path: 'src/index.ts',
+			type: 'file',
+			children: undefined,
+		})
+	})
+
+	it('promotes an existing file node to folder when explicit directory path appears', () => {
+		const stdout = 'entry\nentry/'
+		const result = parseFileTreeOutput(stdout)
+
+		expect(result).toEqual([
+			{ name: 'entry', path: 'entry', type: 'folder', children: undefined },
+		])
+	})
+
+	it('keeps duplicate leaf paths as a single file node', () => {
+		const stdout = 'dup.txt\ndup.txt'
+		const result = parseFileTreeOutput(stdout)
+
+		expect(result).toEqual([
+			{
+				name: 'dup.txt',
+				path: 'dup.txt',
+				type: 'file',
+				children: undefined,
+			},
+		])
+	})
+
+	it('promotes an intermediate file path to folder when nested children appear', () => {
+		const stdout = 'src\nsrc/index.ts'
+		const result = parseFileTreeOutput(stdout)
+
+		expect(result).toEqual([
+			{
+				name: 'src',
+				path: 'src',
+				type: 'folder',
+				children: [
+					{
+						name: 'index.ts',
+						path: 'src/index.ts',
+						type: 'file',
+						children: undefined,
+					},
+				],
+			},
+		])
 	})
 
 	it('does not prepend directory when ls targets . explicitly', () => {
