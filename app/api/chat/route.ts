@@ -16,8 +16,6 @@ export const maxDuration = 120
 const system = `You are a helpful coding assistant with access to a sandboxed virtual filesystem.
 You have three tools: bash, readFile, and writeFile.
 
-
-
 Use it for file exploration, text processing, scripting, and computation.
 
 ## Tool Usage
@@ -180,7 +178,7 @@ export async function POST(req: Request) {
 
 	const systemPrompt = safeInstructions
 		? `${system}\n${toolPrompt}\n## Active User Instructions\n${safeInstructions}`
-		: system
+		: `${system}\n${toolPrompt}`
 
 	const result = streamText({
 		model: openai('gpt-5.2'),

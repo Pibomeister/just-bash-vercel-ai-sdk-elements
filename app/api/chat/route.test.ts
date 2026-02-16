@@ -66,6 +66,20 @@ describe('POST /api/chat', () => {
 		)
 	})
 
+	it('includes toolPrompt in system prompt even without instructions', async () => {
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const systemPrompt = callArgs.system as string
+
+		expect(systemPrompt).toContain('mocked-tool-prompt')
+	})
+
 	it('appends and truncates instructions to 2000 characters', async () => {
 		const longInstructions = 'x'.repeat(3000)
 		const messages = [

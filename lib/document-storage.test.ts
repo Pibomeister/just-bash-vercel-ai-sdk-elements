@@ -235,6 +235,22 @@ describe('saveSidecar', () => {
 	})
 })
 
+describe('documentId validation', () => {
+	it('rejects path traversal attempts', () => {
+		expect(() => getSidecarPath('../../etc')).toThrow(
+			'Invalid documentId format',
+		)
+		expect(() => getMarkdownPath('../passwd')).toThrow(
+			'Invalid documentId format',
+		)
+	})
+
+	it('accepts valid UUID-format document IDs', () => {
+		const result = getSidecarPath('abc-123-def')
+		expect(result).toBe(path.join(uploadsDir, 'abc-123-def', 'sidecar.json'))
+	})
+})
+
 describe('getDocumentMetadata', () => {
 	it('reads and parses metadata.json', async () => {
 		const meta = createDocumentMetadata()

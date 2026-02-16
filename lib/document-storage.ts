@@ -16,6 +16,9 @@ function getUploadsDir(): string {
 }
 
 function getDocumentDir(documentId: string): string {
+	if (!/^[\w-]+$/.test(documentId)) {
+		throw new Error(`Invalid documentId format: ${documentId}`)
+	}
 	return path.join(getUploadsDir(), documentId)
 }
 

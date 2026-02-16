@@ -50,7 +50,7 @@ async function parseWithSdk(
 async function generateSidecarStep(
 	documentId: string,
 	markdown: string,
-): Promise<string | null> {
+): Promise<string> {
 	'use step'
 
 	const { generateSidecar } = await import('@/lib/metadata/sidecar-generator')
