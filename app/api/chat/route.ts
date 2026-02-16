@@ -6,9 +6,11 @@ import {
 	convertToModelMessages,
 	stepCountIs,
 	streamText,
+	tool,
 	type UIMessage,
 } from 'ai'
 import { createToolPrompt } from 'bash-tool'
+import { z } from 'zod'
 import { getToolkit } from '@/lib/sandbox'
 
 export const maxDuration = 120
@@ -136,10 +138,57 @@ fall back to searching content.md directly.
 - Show/display a document to user: readFile({ path: "/documents/{documentId}/content.md" })
 - View original PDF/DOCX: Tell the user to click the file in the file tree sidebar
 
+### Semantic Search (when available)
+If a searchDocuments tool is available, use it for:
+- Broad legal questions spanning multiple documents
+- Finding relevant sections when you don't know which document to look in
+- Conceptual queries like "what are the penalties for tax evasion"
+
+Use bash grep when:
+- You know the specific document to search
+- You need exact text matches or line numbers
+- The user asked about a specific file
+
+searchDocuments returns scored results — higher scores mean better relevance.
+
 Do NOT guess or fabricate document content — always search first.
 Always use find or ls to discover available documents — do not assume the file listing is current.
 
 Be concise but informative in your responses.`
+
+async function buildSearchTools() {
+	const { ensurePipeline } = await import('@/lib/indexing/pipeline-manager')
+	const { search } = await import('@/lib/indexing/semantic-retriever')
+
+	return {
+		searchDocuments: tool({
+			description:
+				'Search across all uploaded documents using semantic similarity. Use for broad questions about document content when you need to find relevant sections across multiple documents. Returns the most relevant text chunks with relevance scores.',
+			inputSchema: z.object({
+				query: z.string().describe('The search query in natural language'),
+				documentType: z
+					.enum(['contrato', 'ley', 'sentencia', 'nom', 'otro'])
+					.optional()
+					.describe('Optional filter by document type'),
+			}),
+			execute: async ({ query, documentType }) => {
+				const pipeline = await ensurePipeline()
+				const results = await search(pipeline.id, {
+					query,
+					documentType,
+					alpha: 0.5,
+					topK: 20,
+					rerankTopN: 5,
+				})
+				return results.map((r) => ({
+					text: r.text,
+					score: r.score,
+					documentId: r.documentId,
+				}))
+			},
+		}),
+	}
+}
 
 export async function POST(req: Request) {
 	let body: { messages?: unknown; instructions?: unknown }
@@ -159,6 +208,10 @@ export async function POST(req: Request) {
 	}
 
 	const { tools, sandbox } = await getToolkit()
+
+	const searchTools = process.env.LLAMA_CLOUD_PROJECT_ID
+		? await buildSearchTools()
+		: {}
 
 	const toolPrompt = await createToolPrompt({
 		sandbox,
@@ -184,7 +237,7 @@ export async function POST(req: Request) {
 		model: openai('gpt-5.2'),
 		system: systemPrompt,
 		messages: modelMessages,
-		tools,
+		tools: { ...tools, ...searchTools },
 		stopWhen: stepCountIs(15),
 		providerOptions: {
 			openai: {

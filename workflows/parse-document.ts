@@ -68,6 +68,42 @@ async function generateSidecarStep(
 	return saveSidecar(documentId, enriched)
 }
 
+async function indexInPipelineStep(
+	documentId: string,
+	markdown: string,
+): Promise<void> {
+	'use step'
+
+	const projectId = process.env.LLAMA_CLOUD_PROJECT_ID
+	if (!projectId) return
+
+	const { ensurePipeline } = await import('@/lib/indexing/pipeline-manager')
+	const { indexDocument } = await import('@/lib/indexing/document-indexer')
+	const { buildMetadata } = await import('@/lib/indexing/document-indexer')
+	const { getDocumentMetadata } = await import('@/lib/document-storage')
+
+	const pipeline = await ensurePipeline()
+	const docMeta = await getDocumentMetadata(documentId)
+
+	// Read sidecar if available
+	let sidecar: Record<string, unknown> | null = null
+	try {
+		const { readFile } = await import('node:fs/promises')
+		const { getSidecarPath } = await import('@/lib/document-storage')
+		const raw = await readFile(getSidecarPath(documentId), 'utf-8')
+		sidecar = JSON.parse(raw)
+	} catch {
+		// No sidecar available, proceed without
+	}
+
+	const metadata = buildMetadata(sidecar, docMeta)
+	await indexDocument(pipeline.id, {
+		documentId,
+		text: markdown,
+		metadata,
+	})
+}
+
 async function saveResultStep(
 	documentId: string,
 	markdown: string,
@@ -131,6 +167,16 @@ export async function parseDocumentWorkflow(
 	} catch (error) {
 		console.warn(
 			`[parse-document] Sidecar generation failed for "${fileName}" (${documentId}):`,
+			error,
+		)
+	}
+
+	// Indexing: failure must not block content.md pipeline
+	try {
+		await indexInPipelineStep(documentId, markdown)
+	} catch (error) {
+		console.warn(
+			`[parse-document] Indexing failed for "${fileName}" (${documentId}):`,
 			error,
 		)
 	}

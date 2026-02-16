@@ -10,6 +10,8 @@ vi.mock('@llamaindex/llama-cloud', () => {
 
 vi.mock('@/lib/document-storage', () => ({
 	getOriginalFile: vi.fn(),
+	getDocumentMetadata: vi.fn(),
+	getSidecarPath: vi.fn((id: string) => `/uploads/${id}/sidecar.json`),
 	saveMarkdown: vi.fn(),
 	updateMetadata: vi.fn(),
 	saveSidecar: vi.fn(),
@@ -17,6 +19,18 @@ vi.mock('@/lib/document-storage', () => ({
 
 vi.mock('@/lib/encoding', () => ({
 	containsReplacementChars: vi.fn(),
+}))
+
+vi.mock('@/lib/indexing/pipeline-manager', () => ({
+	ensurePipeline: vi.fn(async () => ({
+		id: 'pipe-1',
+		name: 'legal-documents',
+		status: 'ready',
+	})),
+}))
+vi.mock('@/lib/indexing/document-indexer', () => ({
+	indexDocument: vi.fn(async () => {}),
+	buildMetadata: vi.fn(() => ({ documentType: 'ley' })),
 }))
 
 const mockGenerateSidecar = vi.fn()
@@ -36,12 +50,15 @@ vi.mock('@/lib/metadata/sidecar-merger', () => ({
 }))
 
 import {
+	getDocumentMetadata,
 	getOriginalFile,
 	saveMarkdown,
 	saveSidecar,
 	updateMetadata,
 } from '@/lib/document-storage'
 import { containsReplacementChars } from '@/lib/encoding'
+import { buildMetadata, indexDocument } from '@/lib/indexing/document-indexer'
+import { ensurePipeline } from '@/lib/indexing/pipeline-manager'
 import type { DocumentMetadata } from '@/lib/types/documents'
 import { parseDocumentWorkflow } from './parse-document'
 
@@ -69,7 +86,17 @@ beforeEach(() => {
 
 	vi.mocked(saveMarkdown).mockResolvedValue(`/uploads/${DOC_ID}/content.md`)
 	vi.mocked(updateMetadata).mockResolvedValue({} as DocumentMetadata)
+	vi.mocked(getDocumentMetadata).mockResolvedValue({
+		documentId: DOC_ID,
+		originalName: FILE_NAME,
+		mimeType: 'application/pdf',
+		uploadedAt: '2026-01-01T00:00:00Z',
+	} as DocumentMetadata)
 	vi.mocked(containsReplacementChars).mockReturnValue(false)
+
+	vi.mocked(ensurePipeline).mockClear()
+	vi.mocked(indexDocument).mockClear()
+	vi.mocked(buildMetadata).mockClear()
 
 	mockGenerateSidecar.mockReturnValue({
 		document: { type: 'contrato' },
@@ -223,5 +250,48 @@ describe('parseDocumentWorkflow', () => {
 			'# Title\n\nContent',
 			warnings,
 		)
+	})
+
+	it('calls indexInPipelineStep when LLAMA_CLOUD_PROJECT_ID is set', async () => {
+		vi.stubEnv('LLAMA_CLOUD_PROJECT_ID', 'test-project')
+
+		await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(ensurePipeline).toHaveBeenCalled()
+		expect(indexDocument).toHaveBeenCalledWith('pipe-1', {
+			documentId: DOC_ID,
+			text: '# Title\n\nContent',
+			metadata: { documentType: 'ley' },
+		})
+
+		vi.unstubAllEnvs()
+	})
+
+	it('skips indexing when LLAMA_CLOUD_PROJECT_ID is not set', async () => {
+		delete process.env.LLAMA_CLOUD_PROJECT_ID
+
+		await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(ensurePipeline).not.toHaveBeenCalled()
+		expect(indexDocument).not.toHaveBeenCalled()
+	})
+
+	it('still saves content.md when indexing fails', async () => {
+		vi.stubEnv('LLAMA_CLOUD_PROJECT_ID', 'test-project')
+		vi.mocked(indexDocument).mockRejectedValue(
+			new Error('Pipeline unavailable'),
+		)
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+		const result = await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(result.markdownPath).toBe(`/uploads/${DOC_ID}/content.md`)
+		expect(saveMarkdown).toHaveBeenCalledWith(DOC_ID, '# Title\n\nContent')
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('Indexing failed'),
+			expect.any(Error),
+		)
+		warnSpy.mockRestore()
+		vi.unstubAllEnvs()
 	})
 })

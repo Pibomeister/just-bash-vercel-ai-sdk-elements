@@ -4,9 +4,19 @@ vi.mock('@/lib/sandbox')
 vi.mock('bash-tool', () => ({
 	createToolPrompt: vi.fn(async () => 'mocked-tool-prompt'),
 }))
+vi.mock('@/lib/indexing/pipeline-manager', () => ({
+	ensurePipeline: vi.fn(async () => ({
+		id: 'pipe-1',
+		name: 'test',
+		status: 'ready',
+	})),
+}))
+vi.mock('@/lib/indexing/semantic-retriever', () => ({
+	search: vi.fn(async () => []),
+}))
 
 import { openai } from '@ai-sdk/openai'
-import { convertToModelMessages, stepCountIs, streamText } from 'ai'
+import { convertToModelMessages, stepCountIs, streamText, tool } from 'ai'
 import { getToolkit } from '@/lib/sandbox'
 import { createJsonRequest } from '@/test/helpers/mock-request'
 import { maxDuration, POST } from './route'
@@ -21,6 +31,9 @@ describe('POST /api/chat', () => {
 		} as never)
 		vi.mocked(convertToModelMessages).mockResolvedValue([])
 		vi.mocked(stepCountIs).mockReturnValue('mock-stop-condition' as never)
+		vi.mocked(tool).mockImplementation(
+			(config) => ({ __toolConfig: config }) as never,
+		)
 		vi.mocked(streamText).mockReturnValue({
 			toUIMessageStreamResponse: vi.fn(() => new Response('stream')),
 		} as never)
@@ -137,5 +150,53 @@ describe('POST /api/chat', () => {
 
 	it('exports maxDuration as 120', () => {
 		expect(maxDuration).toBe(120)
+	})
+
+	it('does not include searchDocuments tool when LLAMA_CLOUD_PROJECT_ID is not set', async () => {
+		delete process.env.LLAMA_CLOUD_PROJECT_ID
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const passedTools = callArgs.tools as Record<string, unknown>
+
+		expect(passedTools).not.toHaveProperty('searchDocuments')
+	})
+
+	it('includes searchDocuments tool when LLAMA_CLOUD_PROJECT_ID is set', async () => {
+		vi.stubEnv('LLAMA_CLOUD_PROJECT_ID', 'test-project')
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const passedTools = callArgs.tools as Record<string, unknown>
+
+		expect(passedTools).toHaveProperty('searchDocuments')
+		expect(passedTools.bash).toBeDefined()
+		vi.unstubAllEnvs()
+	})
+
+	it('system prompt includes semantic search guidance', async () => {
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const systemPrompt = callArgs.system as string
+
+		expect(systemPrompt).toContain('searchDocuments')
+		expect(systemPrompt).toContain('Semantic Search')
+		expect(systemPrompt).toContain('higher scores mean better relevance')
 	})
 })
