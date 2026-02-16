@@ -93,3 +93,27 @@ export const SidecarSchema = z.object({
 })
 
 export type Sidecar = z.infer<typeof SidecarSchema>
+
+export const LlmEnrichmentSchema = z.object({
+	sections: z.array(
+		z.object({
+			id: z.string(),
+			summary: z.string(),
+		}),
+	),
+	parties: z.array(
+		z.object({
+			name: z.string(),
+			role: z.string(),
+			definedAs: z.string(),
+		}),
+	),
+	termDefinitions: z.array(
+		z.object({
+			term: z.string(),
+			meaning: z.string(),
+		}),
+	),
+})
+
+export type LlmEnrichment = z.infer<typeof LlmEnrichmentSchema>
