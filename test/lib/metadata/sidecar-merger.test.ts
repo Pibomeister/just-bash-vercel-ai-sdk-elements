@@ -275,6 +275,130 @@ describe('mergeLlmEnrichment', () => {
 		expect(cliente?.meaning).toBeUndefined()
 	})
 
+	it('preserves existing non-empty meaning from deterministic data', () => {
+		const sidecar = makeMinimalSidecar({
+			entities: {
+				dates: [],
+				monetaryAmounts: [],
+				definedTerms: [
+					{
+						term: 'EL PRESTADOR',
+						definedAtLine: 5,
+						usageLines: [10, 20],
+						meaning: 'Already defined by deterministic pass',
+					},
+				],
+				legalReferences: [],
+			},
+		})
+
+		const llmData = makeLlmEnrichment({
+			sections: [],
+			parties: [],
+			termDefinitions: [
+				{ term: 'EL PRESTADOR', meaning: 'LLM override attempt' },
+			],
+		})
+
+		const result = mergeLlmEnrichment(sidecar, llmData)
+
+		const prestador = result.entities.definedTerms.find(
+			(t) => t.term === 'EL PRESTADOR',
+		)
+		expect(prestador?.meaning).toBe('Already defined by deterministic pass')
+	})
+
+	it('fills meaning for terms with empty string meaning', () => {
+		const sidecar = makeMinimalSidecar({
+			entities: {
+				dates: [],
+				monetaryAmounts: [],
+				definedTerms: [
+					{
+						term: 'EL PRESTADOR',
+						definedAtLine: 5,
+						usageLines: [10, 20],
+						meaning: '',
+					},
+				],
+				legalReferences: [],
+			},
+		})
+
+		const llmData = makeLlmEnrichment({
+			sections: [],
+			parties: [],
+			termDefinitions: [
+				{ term: 'EL PRESTADOR', meaning: 'The service provider' },
+			],
+		})
+
+		const result = mergeLlmEnrichment(sidecar, llmData)
+
+		const prestador = result.entities.definedTerms.find(
+			(t) => t.term === 'EL PRESTADOR',
+		)
+		expect(prestador?.meaning).toBe('The service provider')
+	})
+
+	it('preserves existing parties when sidecar already has them', () => {
+		const existingParties = [
+			{ name: 'Existing Corp', role: 'Seller', definedAs: 'EL VENDEDOR' },
+		]
+		const sidecar = makeMinimalSidecar({
+			document: {
+				title: 'Contrato de Servicios',
+				type: 'contrato',
+				totalLines: 200,
+				totalWords: 1500,
+				language: 'es',
+				parties: existingParties,
+			},
+		})
+
+		const llmData = makeLlmEnrichment({
+			sections: [],
+			parties: [{ name: 'LLM Corp', role: 'Buyer', definedAs: 'EL COMPRADOR' }],
+			termDefinitions: [],
+		})
+
+		const result = mergeLlmEnrichment(sidecar, llmData)
+
+		expect(result.document.parties).toHaveLength(1)
+		expect(result.document.parties![0].name).toBe('Existing Corp')
+	})
+
+	it('ignores LLM sections with IDs not in the TOC', () => {
+		const sidecar = makeMinimalSidecar()
+		const llmData = makeLlmEnrichment({
+			sections: [
+				{ id: 'clausula-primera', summary: 'Valid summary' },
+				{ id: 'nonexistent-section', summary: 'Should be ignored' },
+			],
+			parties: [],
+			termDefinitions: [],
+		})
+
+		const result = mergeLlmEnrichment(sidecar, llmData)
+
+		expect(result.tableOfContents[0].summary).toBe('Valid summary')
+		expect(result.tableOfContents[1].summary).toBe('')
+	})
+
+	it('creates defensive copies of LLM parties (no shared references)', () => {
+		const sidecar = makeMinimalSidecar()
+		const llmData = makeLlmEnrichment({
+			sections: [],
+			termDefinitions: [],
+		})
+
+		const result = mergeLlmEnrichment(sidecar, llmData)
+
+		expect(result.document.parties).toHaveLength(2)
+		expect(result.document.parties![0]).not.toBe(llmData.parties[0])
+		expect(result.document.parties![0]).toEqual(llmData.parties[0])
+	})
+
 	it('does not corrupt sidecar when LLM enrichment has empty arrays', () => {
 		const sidecar = makeMinimalSidecar()
 		const llmData: LlmEnrichment = {

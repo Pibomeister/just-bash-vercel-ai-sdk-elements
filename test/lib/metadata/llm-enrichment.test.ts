@@ -107,4 +107,43 @@ describe('enrichWithLlm', () => {
 		expect(result).toBeNull()
 		expect(mockGenerateObject).not.toHaveBeenCalled()
 	})
+
+	it('uses document delimiter instead of --- to prevent prompt confusion', async () => {
+		const { enrichWithLlm } = await import('@/lib/metadata/llm-enrichment')
+
+		const tocEntries = makeTocEntries(['titulo-1'])
+		const markdownPreview = '# Documento\n---\nContenido con delimitadores.'
+
+		mockGenerateObject.mockResolvedValueOnce({
+			object: {
+				sections: [{ id: 'titulo-1', summary: 'Test' }],
+				parties: [],
+				termDefinitions: [],
+			},
+		})
+
+		await enrichWithLlm(tocEntries, markdownPreview)
+
+		const call = mockGenerateObject.mock.calls[0][0]
+		expect(call.prompt).toContain('<documento>')
+		expect(call.prompt).toContain('</documento>')
+		// Verify document preview is wrapped in XML-style tags, not --- fences
+		expect(call.prompt).toMatch(/<documento>[\s\S]*<\/documento>/)
+	})
+
+	it('logs warning when generateObject throws', async () => {
+		const { enrichWithLlm } = await import('@/lib/metadata/llm-enrichment')
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+		const tocEntries = makeTocEntries(['titulo-1'])
+		mockGenerateObject.mockRejectedValueOnce(new Error('API failure'))
+
+		await enrichWithLlm(tocEntries, '# Doc')
+
+		expect(warnSpy).toHaveBeenCalledWith(
+			'[llm-enrichment] generateObject failed:',
+			expect.any(Error),
+		)
+		warnSpy.mockRestore()
+	})
 })

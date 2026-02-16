@@ -27,7 +27,7 @@ export function mergeLlmEnrichment(
 	// Merge parties: set from LLM only if sidecar has no parties
 	const parties =
 		sidecar.document.parties === undefined && llmData.parties.length > 0
-			? llmData.parties
+			? llmData.parties.map((p) => ({ ...p }))
 			: sidecar.document.parties
 
 	// Build a lookup of LLM term definitions by term

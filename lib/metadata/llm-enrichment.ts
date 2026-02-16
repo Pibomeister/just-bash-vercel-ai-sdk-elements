@@ -17,7 +17,8 @@ export async function enrichWithLlm(
 			prompt,
 		})
 		return object
-	} catch {
+	} catch (error) {
+		console.warn('[llm-enrichment] generateObject failed:', error)
 		return null
 	}
 }
@@ -50,9 +51,9 @@ Secciones a resumir:
 ${sectionList}
 ${ocrNote}
 Vista previa del documento:
----
+<documento>
 ${truncatedPreview}
----
+</documento>
 
 Responde en espanol. Se preciso y conciso en los resumenes.`
 }
