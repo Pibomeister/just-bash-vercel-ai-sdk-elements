@@ -1,6 +1,9 @@
 vi.mock('ai')
 vi.mock('@ai-sdk/openai')
 vi.mock('@/lib/sandbox')
+vi.mock('bash-tool', () => ({
+	createToolPrompt: vi.fn(async () => 'mocked-tool-prompt'),
+}))
 
 import { openai } from '@ai-sdk/openai'
 import { convertToModelMessages, stepCountIs, streamText } from 'ai'
@@ -14,6 +17,7 @@ describe('POST /api/chat', () => {
 		vi.mocked(openai).mockReturnValue('mock-model' as never)
 		vi.mocked(getToolkit).mockResolvedValue({
 			tools: { bash: {} },
+			sandbox: {},
 		} as never)
 		vi.mocked(convertToModelMessages).mockResolvedValue([])
 		vi.mocked(stepCountIs).mockReturnValue('mock-stop-condition' as never)
@@ -82,6 +86,39 @@ describe('POST /api/chat', () => {
 		// Verify the instructions are truncated to 2000 chars (not 3000)
 		expect(systemPrompt).not.toContain('x'.repeat(2001))
 		expect(systemPrompt).toContain('x'.repeat(2000))
+	})
+
+	it('system prompt contains sidecar navigation instructions', async () => {
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const systemPrompt = callArgs.system as string
+
+		expect(systemPrompt).toContain('ALWAYS read the sidecar.json sidecar FIRST')
+		expect(systemPrompt).toContain('navigation.warnings')
+		expect(systemPrompt).toContain('quickCommands')
+		expect(systemPrompt).toContain('sidecar.json')
+		expect(systemPrompt).toContain('tableOfContents')
+	})
+
+	it('system prompt handles legacy documents without sidecar', async () => {
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const systemPrompt = callArgs.system as string
+
+		expect(systemPrompt).toContain('Not all documents have sidecars')
+		expect(systemPrompt).toContain('fall back to searching content.md')
 	})
 
 	it('exports maxDuration as 120', () => {

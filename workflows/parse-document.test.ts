@@ -12,15 +12,33 @@ vi.mock('@/lib/document-storage', () => ({
 	getOriginalFile: vi.fn(),
 	saveMarkdown: vi.fn(),
 	updateMetadata: vi.fn(),
+	saveSidecar: vi.fn(),
 }))
 
 vi.mock('@/lib/encoding', () => ({
 	containsReplacementChars: vi.fn(),
 }))
 
+const mockGenerateSidecar = vi.fn()
+const mockEnrichWithLlm = vi.fn()
+const mockMergeLlmEnrichment = vi.fn()
+
+vi.mock('@/lib/metadata/sidecar-generator', () => ({
+	generateSidecar: (...args: unknown[]) => mockGenerateSidecar(...args),
+}))
+
+vi.mock('@/lib/metadata/llm-enrichment', () => ({
+	enrichWithLlm: (...args: unknown[]) => mockEnrichWithLlm(...args),
+}))
+
+vi.mock('@/lib/metadata/sidecar-merger', () => ({
+	mergeLlmEnrichment: (...args: unknown[]) => mockMergeLlmEnrichment(...args),
+}))
+
 import {
 	getOriginalFile,
 	saveMarkdown,
+	saveSidecar,
 	updateMetadata,
 } from '@/lib/document-storage'
 import { containsReplacementChars } from '@/lib/encoding'
@@ -52,6 +70,15 @@ beforeEach(() => {
 	vi.mocked(saveMarkdown).mockResolvedValue(`/uploads/${DOC_ID}/content.md`)
 	vi.mocked(updateMetadata).mockResolvedValue({} as DocumentMetadata)
 	vi.mocked(containsReplacementChars).mockReturnValue(false)
+
+	mockGenerateSidecar.mockReturnValue({
+		document: { type: 'contrato' },
+		tableOfContents: [],
+		navigation: { warnings: {} },
+	})
+	mockEnrichWithLlm.mockResolvedValue(null)
+	mockMergeLlmEnrichment.mockImplementation((sidecar) => sidecar)
+	vi.mocked(saveSidecar).mockResolvedValue('/uploads/doc-id/sidecar.json')
 
 	// Default: successful two-page parse
 	stubParse([
@@ -150,5 +177,51 @@ describe('parseDocumentWorkflow', () => {
 			status: 'failed',
 			error: `LlamaParse failed for ${FILE_NAME}`,
 		})
+	})
+
+	it('generates and saves sidecar after parsing', async () => {
+		await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(mockGenerateSidecar).toHaveBeenCalledWith(
+			'# Title\n\nContent',
+			`doc-${DOC_ID}`,
+		)
+		expect(mockEnrichWithLlm).toHaveBeenCalled()
+		expect(mockMergeLlmEnrichment).toHaveBeenCalled()
+		expect(saveSidecar).toHaveBeenCalledWith(DOC_ID, expect.any(Object))
+	})
+
+	it('saves content.md even when sidecar generation fails', async () => {
+		mockGenerateSidecar.mockImplementation(() => {
+			throw new Error('Sidecar regex timeout')
+		})
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+		const result = await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(result.markdownPath).toBe(`/uploads/${DOC_ID}/content.md`)
+		expect(saveMarkdown).toHaveBeenCalledWith(DOC_ID, '# Title\n\nContent')
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('Sidecar generation failed'),
+			expect.any(Error),
+		)
+		warnSpy.mockRestore()
+	})
+
+	it('passes navigation warnings to LLM enrichment', async () => {
+		const warnings = { ocr_ordinals: 'OCR warning detected' }
+		mockGenerateSidecar.mockReturnValue({
+			document: { type: 'ley' },
+			tableOfContents: [{ id: 'titulo-1', heading: 'TITULO PRIMERO' }],
+			navigation: { warnings },
+		})
+
+		await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(mockEnrichWithLlm).toHaveBeenCalledWith(
+			[{ id: 'titulo-1', heading: 'TITULO PRIMERO' }],
+			'# Title\n\nContent',
+			warnings,
+		)
 	})
 })

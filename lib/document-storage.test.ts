@@ -8,8 +8,10 @@ import {
 	getDocumentMetadata,
 	getMarkdownPath,
 	getOriginalFile,
+	getSidecarPath,
 	listDocuments,
 	saveMarkdown,
+	saveSidecar,
 	saveUploadedFile,
 	updateMetadata,
 	validateFileType,
@@ -184,6 +186,51 @@ describe('saveMarkdown', () => {
 		expect(fs.writeFile).toHaveBeenCalledWith(
 			metadataPath,
 			expect.stringContaining('"completed"'),
+		)
+	})
+})
+
+describe('getSidecarPath', () => {
+	it('returns path to sidecar.json inside the document directory', () => {
+		const result = getSidecarPath('doc-abc')
+
+		expect(result).toBe(path.join(uploadsDir, 'doc-abc', 'sidecar.json'))
+	})
+})
+
+describe('saveSidecar', () => {
+	it('writes sidecar JSON to the correct path and updates metadata', async () => {
+		const existing = createDocumentMetadata({ status: 'completed' })
+		vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(existing))
+		vi.mocked(fs.writeFile).mockResolvedValue(undefined)
+
+		const sidecar = { pages: 3, language: 'en' }
+		const result = await saveSidecar(existing.documentId, sidecar)
+
+		const expectedPath = path.join(
+			uploadsDir,
+			existing.documentId,
+			'sidecar.json',
+		)
+
+		expect(result).toBe(expectedPath)
+
+		// Writes sidecar JSON to disk
+		expect(fs.writeFile).toHaveBeenCalledWith(
+			expectedPath,
+			JSON.stringify(sidecar, null, 2),
+			'utf-8',
+		)
+
+		// Updates metadata with sidecarPath
+		const metadataPath = path.join(
+			uploadsDir,
+			existing.documentId,
+			'metadata.json',
+		)
+		expect(fs.writeFile).toHaveBeenCalledWith(
+			metadataPath,
+			expect.stringContaining('"sidecarPath"'),
 		)
 	})
 })
