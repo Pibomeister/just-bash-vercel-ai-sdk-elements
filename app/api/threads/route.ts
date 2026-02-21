@@ -1,22 +1,22 @@
 import * as mastraClient from '@/lib/mastra-client'
+import { getServerResourceId, requireResourceId } from '@/lib/resource-id'
 
 // ---------------------------------------------------------------------------
 // POST /api/threads — create a new thread
 // ---------------------------------------------------------------------------
 
 export async function POST(req: Request) {
-	let body: { resourceId?: unknown; title?: unknown }
+	let body: { title?: unknown }
 	try {
 		body = await req.json()
 	} catch {
 		return new Response('Invalid JSON', { status: 400 })
 	}
 
-	const { resourceId, title } = body as { resourceId?: string; title?: string }
+	// Derive resourceId from signed cookie — never trust the client-supplied value
+	const { resourceId } = await requireResourceId()
 
-	if (!resourceId || typeof resourceId !== 'string') {
-		return new Response('Missing resourceId', { status: 400 })
-	}
+	const { title } = body as { title?: string }
 
 	try {
 		const thread = await mastraClient.createThread({
@@ -35,12 +35,11 @@ export async function POST(req: Request) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/threads?resourceId=... — list threads for a resource
+// GET /api/threads — list threads for the authenticated resource
 // ---------------------------------------------------------------------------
 
-export async function GET(req: Request) {
-	const { searchParams } = new URL(req.url)
-	const resourceId = searchParams.get('resourceId')
+export async function GET() {
+	const resourceId = await getServerResourceId()
 
 	if (!resourceId) {
 		return Response.json({ threads: [] })

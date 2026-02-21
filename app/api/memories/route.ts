@@ -1,4 +1,5 @@
 import * as mastraClient from '@/lib/mastra-client'
+import { getServerResourceId } from '@/lib/resource-id'
 
 // ---------------------------------------------------------------------------
 // GET /api/memories — paginated observation listing
@@ -7,9 +8,11 @@ import * as mastraClient from '@/lib/mastra-client'
 export async function GET(req: Request) {
 	const { searchParams } = new URL(req.url)
 	const threadId = searchParams.get('threadId')
-	const resourceId = searchParams.get('resourceId')
 	const limitParam = searchParams.get('limit')
 	const limit = limitParam ? Number.parseInt(limitParam, 10) : 50
+
+	// Derive resourceId from signed cookie — never trust query params
+	const resourceId = await getServerResourceId()
 
 	if (!threadId || !resourceId) {
 		return new Response('Missing threadId or resourceId', { status: 400 })
