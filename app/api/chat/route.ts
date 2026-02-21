@@ -2,6 +2,7 @@ import {
 	type OpenAILanguageModelResponsesOptions,
 	openai,
 } from '@ai-sdk/openai'
+import type { MastraDBMessage } from '@mastra/core/agent'
 import {
 	convertToModelMessages,
 	stepCountIs,
@@ -10,7 +11,9 @@ import {
 	type UIMessage,
 } from 'ai'
 import { createToolPrompt } from 'bash-tool'
+import { nanoid } from 'nanoid'
 import { z } from 'zod'
+import * as mastraClient from '@/lib/mastra-client'
 import { getToolkit } from '@/lib/sandbox'
 
 export const maxDuration = 120
@@ -156,14 +159,96 @@ so ALWAYS prefer bash (grep, find, cat, awk) as your first approach for any sear
 - The user asked about a specific file — bash only
 
 searchDocuments returns scored results — higher scores mean better relevance.
+When you use searchDocuments, cite results inline with [1], [2], etc. using the "index"
+field from each result. Indices are sequential across all searchDocuments calls in the turn.
+NEVER fabricate document content — only cite what searchDocuments returns.
 Only use it when bash has already failed or the query is truly semantic in nature.
+
+Bash results that read /documents/ files include a __bashCitations field with sequential
+indices. Cite those documents inline the same way: [1], [2], etc. Indices are shared and
+sequential across all tool calls (bash + searchDocuments) within a turn.
+ALWAYS cite when referencing document content found via bash.
 
 Do NOT guess or fabricate document content — always search first.
 Always use find or ls to discover available documents — do not assume the file listing is current.
 
 Be concise but informative in your responses.`
 
-async function buildSearchTools() {
+const DOCUMENT_UUID_RE =
+	/\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//g
+
+function wrapBashWithCitations(
+	rawTools: Record<string, unknown>,
+	counter: { value: number },
+): Record<string, unknown> {
+	const bash = rawTools.bash as {
+		description: string
+		inputSchema: unknown
+		execute: (args: {
+			command?: string
+		}) => Promise<{ stdout: string; stderr: string; exitCode: number }>
+	}
+
+	const docCitationMap = new Map<string, { index: number; text: string }>()
+
+	return {
+		...rawTools,
+		bash: {
+			...bash,
+			execute: async (args: { command?: string }) => {
+				const result = await bash.execute(args)
+
+				// Scan command + stdout for document UUIDs
+				const combined = (args.command ?? '') + '\n' + (result.stdout ?? '')
+				DOCUMENT_UUID_RE.lastIndex = 0
+				const docIds = new Set<string>()
+				let m: RegExpExecArray | null
+				while ((m = DOCUMENT_UUID_RE.exec(combined)) !== null) {
+					docIds.add(m[1])
+				}
+
+				if (docIds.size === 0) return result
+
+				// Assign sequential indices and extract text excerpts
+				const bashCitations: Array<{
+					index: number
+					documentId: string
+					text: string
+				}> = []
+				for (const docId of docIds) {
+					if (!docCitationMap.has(docId)) {
+						const lines = (result.stdout ?? '').split('\n')
+						const docLines = lines.filter((l) => l.includes(docId))
+						const text =
+							docLines.length > 0
+								? docLines
+										.slice(0, 3)
+										.map((l) => {
+											const ci = l.indexOf(':')
+											return ci > -1 && l.slice(0, ci).includes('documents')
+												? l.slice(ci + 1)
+												: l
+										})
+										.join('\n')
+										.slice(0, 300)
+								: (result.stdout ?? '').slice(0, 200)
+						docCitationMap.set(docId, { index: ++counter.value, text })
+					}
+					const entry = docCitationMap.get(docId)!
+					bashCitations.push({
+						index: entry.index,
+						documentId: docId,
+						text: entry.text,
+					})
+				}
+
+				return { ...result, __bashCitations: bashCitations }
+			},
+		},
+	}
+}
+
+async function buildSearchTools(sourceCounter: { value: number }) {
 	const { ensurePipeline } = await import('@/lib/indexing/pipeline-manager')
 	const { search } = await import('@/lib/indexing/semantic-retriever')
 
@@ -188,6 +273,7 @@ async function buildSearchTools() {
 					rerankTopN: 5,
 				})
 				return results.map((r) => ({
+					index: ++sourceCounter.value,
 					text: r.text,
 					score: r.score,
 					documentId: r.documentId,
@@ -197,27 +283,93 @@ async function buildSearchTools() {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Memory context builder
+// ---------------------------------------------------------------------------
+
+function buildMemoryContext(
+	workingMemory: string | null,
+	priorMessages: MastraDBMessage[],
+): string {
+	const parts: string[] = []
+
+	if (workingMemory) {
+		parts.push(`WORKING MEMORY:\n${workingMemory}`)
+	}
+
+	if (priorMessages.length > 0) {
+		const recent = priorMessages.slice(-20)
+		const lines = recent.map((m) => {
+			const textPart = m.content.parts.find(
+				(p) => 'text' in p && typeof (p as { text?: string }).text === 'string',
+			) as { text: string } | undefined
+			const text = textPart?.text ?? ''
+			return `- [${m.role}] ${text}`
+		})
+		parts.push(`RECENT MESSAGES:\n${lines.join('\n')}`)
+	}
+
+	return parts.join('\n\n')
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/chat — history hydration
+// ---------------------------------------------------------------------------
+
+export async function GET(req: Request) {
+	const { searchParams } = new URL(req.url)
+	const threadId = searchParams.get('threadId')
+	const resourceId = searchParams.get('resourceId')
+
+	if (!threadId || !resourceId) {
+		return Response.json([])
+	}
+
+	try {
+		const messages = await mastraClient.getMessages({ threadId, limit: 50 })
+		return Response.json(messages ?? [])
+	} catch {
+		return Response.json([])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/chat
+// ---------------------------------------------------------------------------
+
 export async function POST(req: Request) {
-	let body: { messages?: unknown; instructions?: unknown }
+	let body: {
+		messages?: unknown
+		instructions?: unknown
+		threadId?: unknown
+		resourceId?: unknown
+	}
 	try {
 		body = await req.json()
 	} catch {
 		return new Response('Invalid JSON', { status: 400 })
 	}
 
-	const { messages, instructions } = body as {
+	const { messages, instructions, threadId, resourceId } = body as {
 		messages: UIMessage[]
 		instructions?: string
+		threadId?: string
+		resourceId?: string
 	}
 
 	if (!Array.isArray(messages)) {
 		return new Response('Missing or invalid messages array', { status: 400 })
 	}
 
-	const { tools, sandbox } = await getToolkit()
+	const { tools: rawTools, sandbox } = await getToolkit()
 
+	const sourceCounter = { value: 0 }
+	const tools = wrapBashWithCitations(
+		rawTools as Record<string, unknown>,
+		sourceCounter,
+	)
 	const searchTools = process.env.LLAMA_CLOUD_PROJECT_ID
-		? await buildSearchTools()
+		? await buildSearchTools(sourceCounter)
 		: {}
 
 	const toolPrompt = await createToolPrompt({
@@ -236,6 +388,88 @@ export async function POST(req: Request) {
 	const safeInstructions =
 		typeof instructions === 'string' ? instructions.slice(0, 2000) : undefined
 
+	// Memory-enabled path
+	if (threadId && resourceId) {
+		// Phase 1: Fetch memory
+		const [workingMemory, priorMessages] = await Promise.all([
+			mastraClient.getWorkingMemory({ threadId, resourceId }).catch(() => null),
+			mastraClient.getMessages({ threadId, limit: 50 }).catch(() => []),
+		])
+
+		// Phase 2: Build memory context
+		const memoryContext = buildMemoryContext(workingMemory, priorMessages)
+
+		// Phase 3: Build system prompt with memory context
+		const systemWithMemory = memoryContext
+			? safeInstructions
+				? `${system}\n${toolPrompt}\n${memoryContext}\n## Active User Instructions\n${safeInstructions}`
+				: `${system}\n${toolPrompt}\n${memoryContext}`
+			: safeInstructions
+				? `${system}\n${toolPrompt}\n## Active User Instructions\n${safeInstructions}`
+				: `${system}\n${toolPrompt}`
+
+		// Extract last user message text for persistence
+		const lastUserText =
+			messages
+				.filter((m) => m.role === 'user')
+				.at(-1)
+				?.parts?.find(
+					(p): p is { type: 'text'; text: string } => p.type === 'text',
+				)?.text ?? ''
+
+		const result = streamText({
+			model: openai('gpt-5.2'),
+			system: systemWithMemory,
+			messages: modelMessages,
+			tools: { ...tools, ...searchTools },
+			stopWhen: stepCountIs(30),
+			providerOptions: {
+				openai: {
+					reasoningEffort: 'xhigh',
+					reasoningSummary: 'detailed',
+				} satisfies OpenAILanguageModelResponsesOptions,
+			},
+			async onFinish({ text }) {
+				// Phase 4: Persist turn to Mastra (non-blocking)
+				const now = new Date()
+				const messagesToSave: MastraDBMessage[] = [
+					{
+						id: nanoid(),
+						threadId,
+						resourceId,
+						role: 'user',
+						createdAt: now,
+						content: {
+							format: 2,
+							parts: [{ type: 'text', text: lastUserText }],
+						},
+					},
+					{
+						id: nanoid(),
+						threadId,
+						resourceId,
+						role: 'assistant',
+						createdAt: new Date(),
+						content: {
+							format: 2,
+							parts: [{ type: 'text', text }],
+						},
+					},
+				]
+				mastraClient
+					.saveMessages({ messages: messagesToSave })
+					.catch((err: unknown) =>
+						console.error('[memory] saveMessages failed:', err),
+					)
+			},
+		})
+
+		return result.toUIMessageStreamResponse({
+			sendReasoning: true,
+		})
+	}
+
+	// Stateless fallback (original path — unchanged)
 	const systemPrompt = safeInstructions
 		? `${system}\n${toolPrompt}\n## Active User Instructions\n${safeInstructions}`
 		: `${system}\n${toolPrompt}`
@@ -245,7 +479,7 @@ export async function POST(req: Request) {
 		system: systemPrompt,
 		messages: modelMessages,
 		tools: { ...tools, ...searchTools },
-		stopWhen: stepCountIs(15),
+		stopWhen: stepCountIs(30),
 		providerOptions: {
 			openai: {
 				reasoningEffort: 'xhigh',
