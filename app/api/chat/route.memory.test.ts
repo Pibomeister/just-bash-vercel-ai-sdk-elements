@@ -14,6 +14,20 @@ vi.mock('@/lib/indexing/pipeline-manager', () => ({
 vi.mock('@/lib/indexing/semantic-retriever', () => ({
 	search: vi.fn(async () => []),
 }))
+// Mock next/server so `after()` executes its callback immediately in tests
+vi.mock('next/server', () => ({
+	after: vi.fn((cb: () => Promise<void>) => {
+		void cb()
+	}),
+}))
+// Mock resource-id so cookie access doesn't throw outside a request scope
+vi.mock('@/lib/resource-id', () => ({
+	requireResourceId: vi.fn(async () => ({
+		resourceId: 'rid-001',
+		isNew: false,
+	})),
+	getServerResourceId: vi.fn(async () => 'rid-001'),
+}))
 vi.mock('@/lib/mastra-client', () => ({
 	getWorkingMemory: vi.fn(async () => null),
 	getMessages: vi.fn(async () => []),
@@ -72,7 +86,9 @@ describe('POST /api/chat — memory-enabled path', () => {
 		expect(mastraClient.saveMessages).not.toHaveBeenCalled()
 	})
 
-	it('falls back to stateless path when resourceId is missing', async () => {
+	it('uses server-derived resourceId when client omits it (cookie present)', async () => {
+		// The route derives resourceId from a signed cookie via requireResourceId()
+		// even when the client does not supply one. Memory path should be taken.
 		const messages = [
 			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
 		]
@@ -81,7 +97,8 @@ describe('POST /api/chat — memory-enabled path', () => {
 		const res = await POST(req)
 
 		expect(res.status).toBe(200)
-		expect(mastraClient.getWorkingMemory).not.toHaveBeenCalled()
+		// requireResourceId mock returns 'rid-001', so memory path is triggered
+		expect(mastraClient.getWorkingMemory).toHaveBeenCalled()
 	})
 
 	it('calls getWorkingMemory and getMessages when threadId and resourceId are provided', async () => {
@@ -124,7 +141,7 @@ describe('POST /api/chat — memory-enabled path', () => {
 		await POST(req)
 
 		const callArgs = vi.mocked(streamText).mock.calls[0][0]
-		expect(callArgs.system).toContain('WORKING MEMORY:')
+		expect(callArgs.system).toContain('<working_memory>')
 		expect(callArgs.system).toContain('User prefers dark mode.')
 	})
 
@@ -155,7 +172,7 @@ describe('POST /api/chat — memory-enabled path', () => {
 		await POST(req)
 
 		const callArgs = vi.mocked(streamText).mock.calls[0][0]
-		expect(callArgs.system).toContain('RECENT MESSAGES:')
+		expect(callArgs.system).toContain('<recent_conversation>')
 		expect(callArgs.system).toContain('Previous question')
 	})
 
@@ -175,8 +192,9 @@ describe('POST /api/chat — memory-enabled path', () => {
 		await POST(req)
 
 		const callArgs = vi.mocked(streamText).mock.calls[0][0]
-		expect(callArgs.system).not.toContain('WORKING MEMORY:')
-		expect(callArgs.system).not.toContain('RECENT MESSAGES:')
+		expect(callArgs.system).not.toContain('<memory_context>')
+		expect(callArgs.system).not.toContain('<working_memory>')
+		expect(callArgs.system).not.toContain('<recent_conversation>')
 	})
 
 	it('calls saveMessages in onFinish with format: 2', async () => {

@@ -1,8 +1,13 @@
+vi.mock('@/lib/resource-id', () => ({
+	getServerResourceId: vi.fn(async () => 'rid-001'),
+}))
+
 vi.mock('@/lib/mastra-client', () => ({
 	getMessages: vi.fn(async () => []),
 }))
 
 import * as mastraClient from '@/lib/mastra-client'
+import { getServerResourceId } from '@/lib/resource-id'
 import { GET } from './route'
 
 // ---------------------------------------------------------------------------
@@ -13,14 +18,15 @@ describe('GET /api/memories', () => {
 	beforeEach(() => vi.clearAllMocks())
 
 	it('returns 400 when threadId is missing', async () => {
-		const req = new Request('http://localhost/api/memories?resourceId=rid-001')
+		const req = new Request('http://localhost/api/memories')
 
 		const res = await GET(req)
 
 		expect(res.status).toBe(400)
 	})
 
-	it('returns 400 when resourceId is missing', async () => {
+	it('returns 400 when resourceId cookie is missing', async () => {
+		vi.mocked(getServerResourceId).mockResolvedValueOnce(null)
 		const req = new Request('http://localhost/api/memories?threadId=tid-001')
 
 		const res = await GET(req)
@@ -47,9 +53,7 @@ describe('GET /api/memories', () => {
 			},
 		] as never)
 
-		const req = new Request(
-			'http://localhost/api/memories?threadId=tid-001&resourceId=rid-001',
-		)
+		const req = new Request('http://localhost/api/memories?threadId=tid-001')
 
 		const res = await GET(req)
 		const body = await res.json()
@@ -79,9 +83,7 @@ describe('GET /api/memories', () => {
 			},
 		] as never)
 
-		const req = new Request(
-			'http://localhost/api/memories?threadId=tid-001&resourceId=rid-001',
-		)
+		const req = new Request('http://localhost/api/memories?threadId=tid-001')
 
 		const res = await GET(req)
 		const body = await res.json()
@@ -92,7 +94,7 @@ describe('GET /api/memories', () => {
 
 	it('passes limit param to getMessages', async () => {
 		const req = new Request(
-			'http://localhost/api/memories?threadId=tid-001&resourceId=rid-001&limit=25',
+			'http://localhost/api/memories?threadId=tid-001&limit=25',
 		)
 
 		await GET(req)
@@ -107,9 +109,7 @@ describe('GET /api/memories', () => {
 		vi.mocked(mastraClient.getMessages).mockRejectedValueOnce(
 			new Error('DB error'),
 		)
-		const req = new Request(
-			'http://localhost/api/memories?threadId=tid-001&resourceId=rid-001',
-		)
+		const req = new Request('http://localhost/api/memories?threadId=tid-001')
 
 		const res = await GET(req)
 

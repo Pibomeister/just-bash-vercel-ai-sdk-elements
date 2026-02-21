@@ -1,3 +1,12 @@
+// Mock resource-id before any imports — cookie access requires a request scope
+vi.mock('@/lib/resource-id', () => ({
+	requireResourceId: vi.fn(async () => ({
+		resourceId: 'user-abc',
+		isNew: false,
+	})),
+	getServerResourceId: vi.fn(async () => 'user-abc'),
+}))
+
 vi.mock('@/lib/mastra-client', () => ({
 	createThread: vi.fn(async () => ({
 		id: 'new-thread-id',
@@ -48,16 +57,9 @@ describe('POST /api/threads', () => {
 		expect(res.status).toBe(400)
 	})
 
-	it('returns 400 when resourceId is missing', async () => {
+	it('creates a thread using the server-derived resourceId from cookie', async () => {
+		// resourceId comes from the signed cookie, not the request body
 		const req = createJsonRequest({})
-
-		const res = await POST(req)
-
-		expect(res.status).toBe(400)
-	})
-
-	it('creates a thread and returns threadId + createdAt', async () => {
-		const req = createJsonRequest({ resourceId: 'user-abc' })
 
 		const res = await POST(req)
 		const body = await res.json()
@@ -72,7 +74,7 @@ describe('POST /api/threads', () => {
 	})
 
 	it('passes optional title to createThread', async () => {
-		const req = createJsonRequest({ resourceId: 'user-abc', title: 'My Chat' })
+		const req = createJsonRequest({ title: 'My Chat' })
 
 		await POST(req)
 
@@ -82,11 +84,24 @@ describe('POST /api/threads', () => {
 		})
 	})
 
+	it('ignores any client-supplied resourceId in the body', async () => {
+		// The route must never use a client-supplied resourceId
+		const req = createJsonRequest({ resourceId: 'attacker-controlled-id' })
+
+		await POST(req)
+
+		// Only the cookie-derived 'user-abc' should be used
+		expect(mastraClient.createThread).toHaveBeenCalledWith({
+			resourceId: 'user-abc',
+			title: undefined,
+		})
+	})
+
 	it('returns 500 when createThread throws', async () => {
 		vi.mocked(mastraClient.createThread).mockRejectedValueOnce(
 			new Error('DB error'),
 		)
-		const req = createJsonRequest({ resourceId: 'user-abc' })
+		const req = createJsonRequest({})
 
 		const res = await POST(req)
 
@@ -101,10 +116,12 @@ describe('POST /api/threads', () => {
 describe('GET /api/threads', () => {
 	beforeEach(() => vi.clearAllMocks())
 
-	it('returns empty threads when resourceId is missing', async () => {
-		const req = new Request('http://localhost/api/threads')
+	it('returns empty threads when no cookie resourceId is available', async () => {
+		// Mock cookie returning null
+		const { getServerResourceId } = await import('@/lib/resource-id')
+		vi.mocked(getServerResourceId).mockResolvedValueOnce(null)
 
-		const res = await GET(req)
+		const res = await GET()
 		const body = await res.json()
 
 		expect(res.status).toBe(200)
@@ -112,9 +129,8 @@ describe('GET /api/threads', () => {
 	})
 
 	it('returns threads ordered by updatedAt descending', async () => {
-		const req = new Request('http://localhost/api/threads?resourceId=user-abc')
-
-		const res = await GET(req)
+		// resourceId comes from the signed cookie mock (returns 'user-abc')
+		const res = await GET()
 		const body = await res.json()
 
 		expect(res.status).toBe(200)
@@ -125,9 +141,7 @@ describe('GET /api/threads', () => {
 	})
 
 	it('returns correct thread shape', async () => {
-		const req = new Request('http://localhost/api/threads?resourceId=user-abc')
-
-		const res = await GET(req)
+		const res = await GET()
 		const body = await res.json()
 
 		const thread = body.threads[0]
@@ -141,9 +155,8 @@ describe('GET /api/threads', () => {
 		vi.mocked(mastraClient.getThreads).mockRejectedValueOnce(
 			new Error('DB error'),
 		)
-		const req = new Request('http://localhost/api/threads?resourceId=user-abc')
 
-		const res = await GET(req)
+		const res = await GET()
 
 		expect(res.status).toBe(500)
 	})

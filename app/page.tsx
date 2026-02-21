@@ -597,9 +597,15 @@ function DynamicToolPill() {
 
 function AssistantMessage({
 	message,
+	isLastAssistantMessage,
+	memoryActive,
+	chatReady,
 	onMemoryBadgeClick,
 }: {
 	message: UIMessage
+	isLastAssistantMessage: boolean
+	memoryActive: boolean
+	chatReady: boolean
 	onMemoryBadgeClick?: () => void
 }) {
 	const { documents } = useDocuments()
@@ -611,10 +617,15 @@ function AssistantMessage({
 		return enrichSourceMap(raw, documents)
 	}, [message, documents])
 
+	// P1-3: Show the memory badge on the last assistant message when memory is
+	// active (threadId present) and the stream has finished ('ready' status).
+	// Nothing in the backend currently sets metadata.memoryUpdated, so we use
+	// this simpler heuristic instead of StreamData wiring.
 	const hasMemoryUpdate =
 		message.role === 'assistant' &&
-		(message as UIMessage & { metadata?: Record<string, unknown> }).metadata
-			?.memoryUpdated === true
+		memoryActive &&
+		isLastAssistantMessage &&
+		chatReady
 
 	if (message.role === 'user') {
 		return (
@@ -676,66 +687,91 @@ export default function ChatPage() {
 		resourceIdRef.current = resourceId
 	}, [resourceId])
 
+	// Body callback that safely reads from refs outside of render phase
+	const bodyCallback = useCallback(() => {
+		const text = instructionsRef.current?.() ?? undefined
+		const tid = threadIdRef.current
+		const rid = resourceIdRef.current
+		const base = text ? { instructions: text } : {}
+		return tid && rid ? { ...base, threadId: tid, resourceId: rid } : base
+	}, [])
+
+	// Refs are only read from the callback which executes after render, not during render.
+	// Disable ESLint rule as this is a safe pattern for memoizing transport configuration.
+	/* eslint-disable react-hooks/refs */
 	const transport = useMemo(
 		() =>
 			new DefaultChatTransport({
 				api: '/api/chat',
-				body: () => {
-					const text = instructionsRef.current()
-					const tid = threadIdRef.current
-					const rid = resourceIdRef.current
-					const base = text ? { instructions: text } : {}
-					return tid && rid ? { ...base, threadId: tid, resourceId: rid } : base
-				},
+				body: bodyCallback,
 			}),
-		[],
+		[bodyCallback],
 	)
+	/* eslint-enable react-hooks/refs */
 
 	const { messages, sendMessage, status, stop, setMessages } = useChat({
 		transport,
 	})
 
+	// P1-4: Guard against React Strict Mode double-invocation and stale closure
+	// on `messages`.  The ref ensures the effect body runs exactly once even
+	// when React mounts/unmounts the component twice in development.
+	const hasHydratedRef = useRef(false)
+
 	// Hydrate message history on mount when threadId/resourceId are available
 	useEffect(() => {
-		if (!threadId || !resourceId) return
+		// Guard: skip if already hydrated (prevents Strict Mode double-fire)
+		if (hasHydratedRef.current) return
+		if (!threadIdRef.current || !resourceIdRef.current) return
+
+		hasHydratedRef.current = true
+
+		const controller = new AbortController()
+
 		fetch(
-			`/api/chat?threadId=${encodeURIComponent(threadId)}&resourceId=${encodeURIComponent(resourceId)}`,
+			`/api/chat?threadId=${encodeURIComponent(threadIdRef.current)}&resourceId=${encodeURIComponent(resourceIdRef.current)}`,
+			{ signal: controller.signal },
 		)
 			.then(async (res) => {
 				if (!res.ok) return
 				const data = await res.json()
-				if (Array.isArray(data) && data.length > 0) {
-					// data is MastraDBMessage[] — only hydrate if we have no messages yet
-					// to avoid overwriting in-progress conversations
-					if (messages.length === 0) {
-						// Convert stored messages to UIMessage shape for setMessages
-						// MastraDBMessage.content.parts matches UIMessage.parts format
-						const uiMessages = (
-							data as Array<{
-								id: string
-								role: string
-								content: {
-									parts: Array<{ type: string; text?: string }>
-									format: 2
-								}
-								createdAt: string
-							}>
-						).map((m) => ({
-							id: m.id,
-							role: m.role as UIMessage['role'],
-							parts: m.content.parts as UIMessage['parts'],
-							createdAt: new Date(m.createdAt),
-						}))
-						setMessages(uiMessages as UIMessage[])
-					}
+				if (!Array.isArray(data) || data.length === 0) return
+
+				// Convert stored messages to UIMessage shape for setMessages.
+				// MastraDBMessage.content.parts matches UIMessage.parts format.
+				const uiMessages = (
+					data as Array<{
+						id: string
+						role: string
+						content: {
+							parts: Array<{ type: string; text?: string }>
+							format: 2
+						}
+						createdAt: string
+					}>
+				).map((m) => ({
+					id: m.id,
+					role: m.role as UIMessage['role'],
+					parts: m.content.parts as UIMessage['parts'],
+					createdAt: new Date(m.createdAt),
+				}))
+
+				// Functional update avoids the stale closure on `messages` and
+				// only populates if no conversation has started yet.
+				setMessages((prev) =>
+					prev.length === 0 ? (uiMessages as UIMessage[]) : prev,
+				)
+			})
+			.catch((err: unknown) => {
+				if ((err as Error).name !== 'AbortError') {
+					console.error('[hydration] failed:', err)
 				}
 			})
-			.catch(() => {
-				// Silently ignore hydration errors
-			})
-		// Only run once when threadId and resourceId become available
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [threadId, resourceId])
+
+		return () => controller.abort()
+		// setMessages is a stable reference from useChat; threadIdRef /
+		// resourceIdRef are refs so they don't need to be in deps.
+	}, [setMessages])
 
 	const {
 		suggestions: followUpSuggestions,
@@ -894,10 +930,13 @@ export default function ChatPage() {
 										/>
 									</ConversationEmptyState>
 								) : (
-									messages.map((message) => (
+									messages.map((message, idx) => (
 										<AssistantMessage
 											key={message.id}
 											message={message}
+											isLastAssistantMessage={idx === messages.length - 1}
+											memoryActive={Boolean(threadId)}
+											chatReady={status === 'ready'}
 											onMemoryBadgeClick={() => setMemoryInspectorOpen(true)}
 										/>
 									))
