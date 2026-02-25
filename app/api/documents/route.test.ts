@@ -19,14 +19,26 @@ describe('GET /api/documents', () => {
 		expect(data).toEqual(docs)
 	})
 
-	it('returns empty array with 200 when listDocuments throws', async () => {
-		vi.mocked(listDocuments).mockRejectedValue(new Error('disk failure'))
+	it('returns empty array with 200 when uploads directory is missing (ENOENT)', async () => {
+		vi.mocked(listDocuments).mockRejectedValue(
+			new Error('ENOENT: no such file or directory'),
+		)
 
 		const res = await GET()
 		const data = await res.json()
 
 		expect(res.status).toBe(200)
 		expect(data).toEqual([])
+	})
+
+	it('returns 500 when listDocuments throws a non-ENOENT error', async () => {
+		vi.mocked(listDocuments).mockRejectedValue(new Error('disk failure'))
+
+		const res = await GET()
+		const data = await res.json()
+
+		expect(res.status).toBe(500)
+		expect(data).toEqual({ error: 'Failed to list documents' })
 	})
 
 	it('calls listDocuments exactly once per invocation', async () => {

@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+msg_file="$1"
+tmp_file="$(mktemp)"
+
+# Keep commit messages free of auto-injected Cursor co-author trailers.
+awk '!/^Co-authored-by:[[:space:]]*Cursor[[:space:]]*<cursoragent@cursor\.com>$/' "$msg_file" > "$tmp_file"
+mv "$tmp_file" "$msg_file"

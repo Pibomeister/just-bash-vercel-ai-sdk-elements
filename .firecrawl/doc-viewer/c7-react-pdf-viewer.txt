@@ -1,0 +1,130 @@
+### Core Viewer and Default Layout Plugin Setup in React
+
+Source: https://github.com/react-pdf-viewer/react-pdf-viewer/blob/master/README.md
+
+Demonstrates how to set up the core React PDF Viewer component and the default layout plugin. It includes necessary imports for the viewer and plugin, styling, plugin instantiation, and the basic structure for embedding the viewer with a file URL and plugins.
+
+```javascript
+// Core viewer
+import { Viewer } from '@react-pdf-viewer/core';
+
+// Plugins
+import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
+
+// Import styles
+import '@react-pdf-viewer/core/lib/styles/index.css';
+import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+
+// Create new plugin instance
+const defaultLayoutPluginInstance = defaultLayoutPlugin();
+
+<Viewer
+    fileUrl='/assets/pdf-open-parameters.pdf'
+    plugins={[
+        // Register plugins
+        defaultLayoutPluginInstance,
+        ...
+    ]}
+/>
+```
+
+--------------------------------
+
+### Upgrade Viewer and Plugin Usage (JavaScript)
+
+Source: https://github.com/react-pdf-viewer/react-pdf-viewer/blob/master/changelogs/v2.0.1.md
+
+Shows the code changes required to upgrade from the old Viewer component to the new one in v2.0.1, including importing the new Viewer, default layout plugin, and their respective styles.
+
+```javascript
+// Old Viewer
+import Viewer from '@phuocng/react-pdf-viewer';
+
+// New Viewer
+import { Viewer } from '@react-pdf-viewer/core';
+
+// Plugins
+import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
+
+// Import styles
+import '@react-pdf-viewer/core/lib/styles/index.css';
+import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+
+// Create new plugin instance
+const defaultLayoutPluginInstance = defaultLayoutPlugin();
+
+// Your render function
+<Viewer
+    fileUrl='/path/to/document.pdf'
+    plugins={[
+        // Register plugins
+        defaultLayoutPluginInstance,
+        ...
+    ]}
+/>
+```
+
+--------------------------------
+
+### Basic Viewer Setup with Plugins (JavaScript)
+
+Source: https://github.com/react-pdf-viewer/react-pdf-viewer/blob/master/changelogs/v2.0.1.md
+
+Demonstrates the basic setup for the react-pdf-viewer v2.0.1, highlighting the import of plugins and their registration with the Viewer component. It shows how to import the toolbar plugin and its styles.
+
+```javascript
+// Import plugin
+import { toolbarPlugin } from '@react-pdf-viewer/toolbar';
+
+// Import styles
+import '@react-pdf-viewer/toolbar/lib/styles/index.css';
+
+// Create the plugin instance
+const toolbarPluginInstance = toolbarPlugin(...);
+
+// Register plugins
+<Viewer
+    plugins={[
+        // Array of plugins
+        toolbarPlugin,
+        ...
+    ]}
+/>
+```
+
+--------------------------------
+
+### Accessing Plugin Instances from Default Layout in React PDF Viewer
+
+Source: https://github.com/react-pdf-viewer/react-pdf-viewer/blob/master/changelogs/v2.4.0.md
+
+Demonstrates how to retrieve instances of various plugins (Attachment, Bookmark, Thumbnail, Toolbar) from the `defaultLayoutPluginInstance`. This allows for centralized control and interaction with different viewer components.
+
+```javascript
+const defaultLayoutPluginInstance = defaultLayoutPlugin();
+
+const { attachmentPluginInstance, bookmarkPluginInstance, thumbnailPluginInstance, toolbarPluginInstance } = defaultLayoutPluginInstance;
+```
+
+Source: https://github.com/react-pdf-viewer/react-pdf-viewer/blob/master/README.md
+
+React PDF viewer > Features: -   [x] Support password protected document
+-   [x] Zooming: Support custom levels such as actual size, page fit, and page width
+-   [x] Navigation between pages
+-   [x] Can go to the first and last pages quickly
+-   [x] Search for text
+-   [x] Preview page thumbnails
+-   [x] View and navigate the table of contents
+-   [x] List and download attachments
+-   [x] Rotating
+-   [x] Text selection and hand tool modes
+-   [x] Different scrolling modes
+-   [x] Full screen mode
+-   [x] Can open a file from local. Users can drag and drop a local file to view it
+-   [x] Download file
+-   [x] View the document properties
+-   [x] Support SSR
+-   [x] Print
+-   [x] Theming
+-   [x] Dark mode
+-   [x] Accessibility

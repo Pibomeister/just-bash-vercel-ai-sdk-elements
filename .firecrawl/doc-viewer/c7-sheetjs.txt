@@ -1,0 +1,168 @@
+### React Component for CSV and Text Preview
+
+Source: https://docs.sheetjs.com/docs/api/utilities/csv
+
+A React component that reads a file, processes its worksheets, and displays the data in CSV format. It uses `XLSX.read` to parse the file and `XLSX.utils.sheet_to_csv` to convert worksheet data to CSV strings. It also includes a file input for user selection.
+
+```javascript
+function SheetJSPreCSView() {
+  const [__html, setHTML] = React.useState("Select a file");
+
+  const process = (ab) => {
+    const wb = XLSX.read(ab);
+    var res = "";
+    wb.SheetNames.forEach((n, idx) => {
+      const ws = wb.Sheets[n];
+      res += `<b>Sheet #${idx+1} (${n})</b>\n`;
+      res += XLSX.utils.sheet_to_csv(ws) + "\n\n";
+    });
+    setHTML(res);
+  };
+  React.useEffect(() => { (async() => { 
+    const url = "https://docs.sheetjs.com/pres.numbers";
+    process(await (await fetch(url)).arrayBuffer());
+  })(); }, []);
+
+  return ( <> 
+    <input type="file" onChange={async(e) => {
+      process(await e.target.files[0].arrayBuffer());
+    }}/>
+    <pre dangerouslySetInnerHTML={{ __html }}/>
+  </> );
+}
+
+```
+
+--------------------------------
+
+### React Component for Reading and Exporting XLSX Files
+
+Source: https://docs.sheetjs.com/docs/demos/frontend/react
+
+This React component, written in JavaScript, utilizes the SheetJS library to fetch an XLSX file from a URL, parse its content into a JSON format, and display it as an HTML table. It also includes a button to export the displayed data back into an XLSX file. Dependencies include React, useState, useEffect, useCallback, and the 'xlsx' library. It takes no explicit props but fetches data from a hardcoded URL.
+
+```javascript
+import React, { useCallback, useEffect, useState } from "react";  
+  
+import { read, utils, writeFileXLSX } from 'xlsx';  
+  
+export default function SheetJSReactAoO() {  
+  /* the component state is an array of presidents */  
+  const [pres, setPres] = useState([] /* as any[] */);  
+  
+  /* Fetch and update the state once */  
+  useEffect(() => { (async() => {  
+    const f = await (await fetch("https://docs.sheetjs.com/pres.xlsx")).arrayBuffer();  
+    const wb = read(f); // parse the array buffer  
+    const ws = wb.Sheets[wb.SheetNames[0]]; // get the first worksheet  
+    const data = utils.sheet_to_json(ws); // generate objects  
+    setPres(data); // update state  
+  })(); }, []);  
+  
+  /* get state data and export to XLSX */  
+  const exportFile = useCallback(() => {  
+    const ws = utils.json_to_sheet(pres);  
+    const wb = utils.book_new();  
+    utils.book_append_sheet(wb, ws, "Data");  
+    writeFileXLSX(wb, "SheetJSReactAoO.xlsx");  
+  }, [pres]);  
+  
+  return (<table><thead><tr><th>Name</th><th>Index</th></tr></thead><tbody>  
+    { /* generate row for each president */  
+      pres.map((pres, index) => (<tr key={index}>  
+        <td>{pres.Name}</td>  
+        <td>{pres.Index}</td>  
+      </tr>))  
+    }  
+  </tbody><tfoot><tr><td colSpan={2}>  
+    <button onClick={exportFile}>Export XLSX</button>  
+  </td></tr></tfoot></table>);  
+}
+```
+
+--------------------------------
+
+### Read Base64 Excel File with Expo File System
+
+Source: https://docs.sheetjs.com/docs/demos/mobile/reactnative
+
+Reads an Excel file from a given URI as a Base64 encoded string using `expo-file-system` and then parses it into a workbook object using SheetJS. Requires `expo-file-system` and `xlsx`. Handles Base64 encoded data.
+
+```javascript
+import * as XLSX from "xlsx";  
+import * as FileSystem from 'expo-file-system';  
+  
+const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });  
+const workbook = XLSX.read(b64, { type: "base64" });  
+```
+
+--------------------------------
+
+### Import XLSX data as Base64 in Frontend JavaScript
+
+Source: https://docs.sheetjs.com/docs/demos/static/vitejs
+
+This JavaScript code shows how to import an XLSX file processed by the Base64 ViteJS plugin. It imports the Base64 string and uses SheetJS `read` with the 'base64' type to parse the workbook data, then renders it as an HTML table. Requires SheetJS library.
+
+```javascript
+import { read, utils } from "xlsx";
+
+import b64 from './data.xlsx?b64';
+
+const wb = read(b64, { type: "base64" });
+const wsname = wb.SheetNames[0];
+const data = utils.sheet_to_json(wb.Sheets[wsname]);
+
+document.querySelector('#app').innerHTML = `<table>
+  <thead><tr><th>Name</th><th>Index</th></tr></thead>
+  <tbody>
+    ${data.map(row => `<tr>
+      <td>${row.Name}</td>
+      <td>${row.Index}</td>
+    </tr>`).join("\n")}  
+  </tbody>
+</table>`;
+```
+
+--------------------------------
+
+### Parse XLSX with A1-Style Formulae (JavaScript)
+
+Source: https://docs.sheetjs.com/docs/csf/features/formulae
+
+This snippet demonstrates how to fetch an XLSX file, parse it with cellFormula, sheetStubs, and xlfn options enabled, and then display the formula, value, and cell type for a specified cell. It uses React for the UI and Fetch API for file retrieval.
+
+```javascript
+/* The live editor requires this function wrapper */
+function ConcatFormula(props) {
+  const [ws, setWS] = React.useState({"!ref":"A1"});
+  const [addr, setAddr] = React.useState("D1");
+  const setaddr = React.useCallback((evt)=>{
+    setAddr(evt.target.value)
+  });
+
+  /* Process ArrayBuffer */
+  const process_ab = (ab) => {
+    const wb = XLSX.read(ab, {cellFormula: true, sheetStubs: true, xlfn: true});
+    setWS(wb.Sheets[wb.SheetNames[0]]);
+  };
+
+  /* Fetch sample file */
+  React.useEffect(() => {(async() => {
+    process_ab(await (await fetch("/files/concat.xlsx")).arrayBuffer());
+  })(); }, []);
+  const process_file = async(e) => {
+    process_ab(await e.target.files[0].arrayBuffer());
+  };
+  return ( <>
+    <input type="file" onChange={process_file}/><br/>
+    <b>Cell: </b><input type="text" value={addr} onChange={setaddr} size="6"/>
+    {!ws[addr] ? ( <b>Cell {addr} not found</b> ) : ( <table>
+      <tr><td>Formula</td><td><code>{ws[addr].f}</code></td></tr>
+      <tr><td>Value</td><td><code>{ws[addr].v}</code></td></tr>
+      <tr><td>Cell Type</td><td><code>{ws[addr].t}</code></td></tr>
+    </table> )}
+  </> );
+}
+
+```

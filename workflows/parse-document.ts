@@ -85,13 +85,11 @@ async function indexInPipelineStep(
 	const pipeline = await ensurePipeline()
 	const docMeta = await getDocumentMetadata(documentId)
 
-	// Read sidecar if available
+	// Read sidecar if available (uses storage backend, not raw fs)
 	let sidecar: Record<string, unknown> | null = null
 	try {
-		const { readFile } = await import('node:fs/promises')
-		const { getSidecarPath } = await import('@/lib/document-storage')
-		const raw = await readFile(getSidecarPath(documentId), 'utf-8')
-		sidecar = JSON.parse(raw)
+		const { readSidecar } = await import('@/lib/document-storage')
+		sidecar = await readSidecar(documentId)
 	} catch {
 		// No sidecar available, proceed without
 	}

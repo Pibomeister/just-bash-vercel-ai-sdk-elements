@@ -13,7 +13,11 @@ vi.mock('@llamaindex/llama-cloud', () => ({
 }))
 
 import { LlamaCloud } from '@llamaindex/llama-cloud'
-import { createClient, ensurePipeline } from '@/lib/indexing/pipeline-manager'
+import {
+	_resetCaches,
+	createClient,
+	ensurePipeline,
+} from '@/lib/indexing/pipeline-manager'
 
 describe('createClient', () => {
 	beforeEach(() => {
@@ -22,6 +26,7 @@ describe('createClient', () => {
 
 	afterEach(() => {
 		vi.unstubAllEnvs()
+		_resetCaches()
 	})
 
 	it('creates a LlamaCloud client with api key from env', () => {
@@ -46,6 +51,7 @@ describe('ensurePipeline', () => {
 		vi.stubEnv('LLAMA_CLOUD_API_KEY', 'test-api-key')
 		vi.stubEnv('LLAMA_CLOUD_PROJECT_ID', 'test-project-id')
 		vi.stubEnv('LLAMA_CLOUD_PIPELINE_NAME', '')
+		vi.stubEnv('OPENAI_API_KEY', 'test-openai-key')
 		mockUpsert.mockReset()
 		mockUpsert.mockResolvedValue({
 			id: 'pipe-abc',
@@ -56,6 +62,7 @@ describe('ensurePipeline', () => {
 
 	afterEach(() => {
 		vi.unstubAllEnvs()
+		_resetCaches()
 	})
 
 	it('calls upsert with correct default config', async () => {
@@ -67,6 +74,7 @@ describe('ensurePipeline', () => {
 			embedding_config: {
 				type: 'OPENAI_EMBEDDING',
 				component: {
+					api_key: 'test-openai-key',
 					model_name: 'text-embedding-3-small',
 					dimensions: 1536,
 				},
@@ -119,6 +127,7 @@ describe('ensurePipeline', () => {
 				project_id: 'override-project',
 				embedding_config: expect.objectContaining({
 					component: expect.objectContaining({
+						api_key: 'test-openai-key',
 						model_name: 'text-embedding-3-large',
 						dimensions: 3072,
 					}),
@@ -140,6 +149,13 @@ describe('ensurePipeline', () => {
 		)
 	})
 
+	it('throws if OPENAI_API_KEY is missing', async () => {
+		vi.stubEnv('OPENAI_API_KEY', '')
+		await expect(ensurePipeline()).rejects.toThrow(
+			'OPENAI_API_KEY is required for embedding generation',
+		)
+	})
+
 	it('handles unknown status from API response', async () => {
 		mockUpsert.mockResolvedValue({
 			id: 'pipe-xyz',
@@ -155,5 +171,60 @@ describe('ensurePipeline', () => {
 		expect(mockUpsert).toHaveBeenCalledWith(
 			expect.objectContaining({ name: 'override-name' }),
 		)
+	})
+})
+
+describe('caching', () => {
+	beforeEach(() => {
+		vi.stubEnv('LLAMA_CLOUD_API_KEY', 'test-api-key')
+		vi.stubEnv('LLAMA_CLOUD_PROJECT_ID', 'test-project-id')
+		vi.stubEnv('OPENAI_API_KEY', 'test-openai-key')
+		mockUpsert.mockReset()
+		mockUpsert.mockResolvedValue({
+			id: 'pipe-abc',
+			name: 'legal-documents',
+			status: 'ACTIVE',
+		})
+		vi.mocked(LlamaCloud).mockClear()
+	})
+
+	afterEach(() => {
+		vi.unstubAllEnvs()
+		_resetCaches()
+	})
+
+	it('createClient returns same instance on subsequent calls', () => {
+		const first = createClient()
+		const second = createClient()
+		expect(first).toBe(second)
+		expect(LlamaCloud).toHaveBeenCalledTimes(1)
+	})
+
+	it('createClient returns new instance after _resetCaches', () => {
+		const first = createClient()
+		_resetCaches()
+		const second = createClient()
+		expect(first).not.toBe(second)
+		expect(LlamaCloud).toHaveBeenCalledTimes(2)
+	})
+
+	it('ensurePipeline caches result after first call', async () => {
+		const first = await ensurePipeline()
+		const second = await ensurePipeline()
+		expect(first).toEqual(second)
+		expect(mockUpsert).toHaveBeenCalledTimes(1)
+	})
+
+	it('ensurePipeline bypasses cache when overrides provided', async () => {
+		await ensurePipeline()
+		await ensurePipeline({ pipelineName: 'custom' })
+		expect(mockUpsert).toHaveBeenCalledTimes(2)
+	})
+
+	it('ensurePipeline does not cache when overrides provided', async () => {
+		await ensurePipeline({ pipelineName: 'custom' })
+		await ensurePipeline()
+		// First call with overrides shouldn't cache, second call should hit API
+		expect(mockUpsert).toHaveBeenCalledTimes(2)
 	})
 })

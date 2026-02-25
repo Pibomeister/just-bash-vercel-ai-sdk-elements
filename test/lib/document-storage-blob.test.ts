@@ -10,6 +10,7 @@ import {
 	getOriginalFile,
 	getStorageBackend,
 	listDocuments,
+	readSidecar,
 	saveMarkdown,
 	saveSidecar,
 	saveUploadedFile,
@@ -164,6 +165,58 @@ describe('blob backend: saveSidecar', () => {
 		)
 
 		fetchSpy.mockRestore()
+	})
+})
+
+describe('blob backend: readSidecar', () => {
+	beforeEach(() => {
+		vi.stubEnv('STORAGE_BACKEND', 'blob')
+	})
+
+	afterEach(() => {
+		vi.unstubAllEnvs()
+		vi.clearAllMocks()
+	})
+
+	it('fetches sidecar via head + fetch and parses JSON', async () => {
+		vi.mocked(head).mockResolvedValue({
+			url: 'https://blob.vercel-storage.com/documents/test-doc-id/sidecar.json',
+			pathname: 'documents/test-doc-id/sidecar.json',
+		} as never)
+
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(mockFetchResponse(JSON.stringify({ pages: 3 })))
+
+		const result = await readSidecar('test-doc-id')
+
+		expect(result).toEqual({ pages: 3 })
+		expect(head).toHaveBeenCalledWith('documents/test-doc-id/sidecar.json')
+
+		fetchSpy.mockRestore()
+	})
+
+	it('throws descriptive error when fetch response is not ok', async () => {
+		vi.mocked(head).mockResolvedValue({
+			url: 'https://blob.vercel-storage.com/documents/bad-id/sidecar.json',
+			pathname: 'documents/bad-id/sidecar.json',
+		} as never)
+
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(mockFetchResponse('', false))
+
+		await expect(readSidecar('bad-id')).rejects.toThrow(
+			'Failed to fetch sidecar for bad-id',
+		)
+
+		fetchSpy.mockRestore()
+	})
+
+	it('throws when blob service is unreachable', async () => {
+		vi.mocked(head).mockRejectedValue(new Error('BlobStoreNotFound'))
+
+		await expect(readSidecar('test-id')).rejects.toThrow('BlobStoreNotFound')
 	})
 })
 

@@ -74,7 +74,9 @@ describe('POST /api/chat', () => {
 		expect(streamText).toHaveBeenCalledWith(
 			expect.objectContaining({
 				model: 'mock-model',
-				tools: { bash: {} },
+				tools: expect.objectContaining({
+					bash: expect.objectContaining({ execute: expect.any(Function) }),
+				}),
 			}),
 		)
 	})
@@ -150,6 +152,17 @@ describe('POST /api/chat', () => {
 
 	it('exports maxDuration as 120', () => {
 		expect(maxDuration).toBe(120)
+	})
+
+	it('configures step limit to 30', async () => {
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		expect(stepCountIs).toHaveBeenCalledWith(30)
 	})
 
 	it('does not include searchDocuments tool when LLAMA_CLOUD_PROJECT_ID is not set', async () => {

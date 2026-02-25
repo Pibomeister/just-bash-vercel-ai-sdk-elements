@@ -11,7 +11,7 @@ vi.mock('@llamaindex/llama-cloud', () => {
 vi.mock('@/lib/document-storage', () => ({
 	getOriginalFile: vi.fn(),
 	getDocumentMetadata: vi.fn(),
-	getSidecarPath: vi.fn((id: string) => `/uploads/${id}/sidecar.json`),
+	readSidecar: vi.fn(),
 	saveMarkdown: vi.fn(),
 	updateMetadata: vi.fn(),
 	saveSidecar: vi.fn(),
@@ -52,6 +52,7 @@ vi.mock('@/lib/metadata/sidecar-merger', () => ({
 import {
 	getDocumentMetadata,
 	getOriginalFile,
+	readSidecar,
 	saveMarkdown,
 	saveSidecar,
 	updateMetadata,
@@ -93,6 +94,7 @@ beforeEach(() => {
 		uploadedAt: '2026-01-01T00:00:00Z',
 	} as DocumentMetadata)
 	vi.mocked(containsReplacementChars).mockReturnValue(false)
+	vi.mocked(readSidecar).mockResolvedValue({ document: { type: 'contrato' } })
 
 	vi.mocked(ensurePipeline).mockClear()
 	vi.mocked(indexDocument).mockClear()
@@ -274,6 +276,16 @@ describe('parseDocumentWorkflow', () => {
 
 		expect(ensurePipeline).not.toHaveBeenCalled()
 		expect(indexDocument).not.toHaveBeenCalled()
+	})
+
+	it('calls readSidecar during indexing step', async () => {
+		vi.stubEnv('LLAMA_CLOUD_PROJECT_ID', 'test-project')
+
+		await parseDocumentWorkflow(DOC_ID, FILE_NAME)
+
+		expect(readSidecar).toHaveBeenCalledWith(DOC_ID)
+
+		vi.unstubAllEnvs()
 	})
 
 	it('still saves content.md when indexing fails', async () => {

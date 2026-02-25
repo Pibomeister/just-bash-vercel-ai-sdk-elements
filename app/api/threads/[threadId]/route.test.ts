@@ -1,3 +1,12 @@
+// Mock resource-id before any imports — cookie access requires a request scope
+vi.mock('@/lib/resource-id', () => ({
+	requireResourceId: vi.fn(async () => ({
+		resourceId: 'user-abc',
+		isNew: false,
+	})),
+	getServerResourceId: vi.fn(async () => 'user-abc'),
+}))
+
 vi.mock('@/lib/mastra-client', () => ({
 	getThreadById: vi.fn(async () => null),
 	deleteThread: vi.fn(async () => undefined),
@@ -13,55 +22,46 @@ import { DELETE } from './route'
 describe('DELETE /api/threads/:threadId', () => {
 	beforeEach(() => vi.clearAllMocks())
 
-	function makeDeleteRequest(threadId: string, resourceId?: string) {
-		const url = resourceId
-			? `http://localhost/api/threads/${threadId}?resourceId=${encodeURIComponent(resourceId)}`
-			: `http://localhost/api/threads/${threadId}`
+	function makeDeleteRequest(threadId: string) {
+		const url = `http://localhost/api/threads/${threadId}`
 		return {
 			req: new Request(url, { method: 'DELETE' }),
 			params: Promise.resolve({ threadId }),
 		}
 	}
 
-	it('returns 400 when resourceId query param is missing', async () => {
-		const { req, params } = makeDeleteRequest('tid-001')
-
-		const res = await DELETE(req, { params })
-
-		expect(res.status).toBe(400)
-	})
-
 	it('returns 404 when thread does not exist', async () => {
 		vi.mocked(mastraClient.getThreadById).mockResolvedValue(null)
-		const { req, params } = makeDeleteRequest('tid-nonexistent', 'user-abc')
+		const { req, params } = makeDeleteRequest('tid-nonexistent')
 
 		const res = await DELETE(req, { params })
 
 		expect(res.status).toBe(404)
 	})
 
-	it('returns 403 when resourceId does not match thread owner', async () => {
+	it('returns 403 when cookie resourceId does not match thread owner', async () => {
 		vi.mocked(mastraClient.getThreadById).mockResolvedValue({
 			id: 'tid-001',
-			resourceId: 'user-abc',
+			resourceId: 'user-other',
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		})
-		const { req, params } = makeDeleteRequest('tid-001', 'user-xyz')
+		const { req, params } = makeDeleteRequest('tid-001')
 
 		const res = await DELETE(req, { params })
 
 		expect(res.status).toBe(403)
 	})
 
-	it('deletes the thread and returns success when ownership matches', async () => {
+	it('deletes the thread and returns success when cookie matches thread owner', async () => {
+		// requireResourceId mock returns 'user-abc', thread also owned by 'user-abc'
 		vi.mocked(mastraClient.getThreadById).mockResolvedValue({
 			id: 'tid-001',
 			resourceId: 'user-abc',
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		})
-		const { req, params } = makeDeleteRequest('tid-001', 'user-abc')
+		const { req, params } = makeDeleteRequest('tid-001')
 
 		const res = await DELETE(req, { params })
 		const body = await res.json()
@@ -83,7 +83,7 @@ describe('DELETE /api/threads/:threadId', () => {
 		vi.mocked(mastraClient.deleteThread).mockRejectedValueOnce(
 			new Error('DB error'),
 		)
-		const { req, params } = makeDeleteRequest('tid-001', 'user-abc')
+		const { req, params } = makeDeleteRequest('tid-001')
 
 		const res = await DELETE(req, { params })
 

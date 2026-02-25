@@ -452,6 +452,46 @@ describe('lib/sandbox blob hydration', () => {
 		fetchSpy.mockRestore()
 	})
 
+	it('fetches blobs in batches of HYDRATION_CONCURRENCY (10)', async () => {
+		// Create 15 blobs to span two batches (10 + 5)
+		const blobs = Array.from({ length: 15 }, (_, i) => ({
+			pathname: `documents/doc-${i}/content.md`,
+			url: `https://blob.vercel-storage.com/documents/doc-${i}/content.md`,
+		}))
+
+		mocks.blobList.mockResolvedValue({
+			blobs,
+			hasMore: false,
+		} as never)
+
+		let maxConcurrent = 0
+		let currentConcurrent = 0
+
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockImplementation(async () => {
+				currentConcurrent++
+				if (currentConcurrent > maxConcurrent) maxConcurrent = currentConcurrent
+				// Simulate async work
+				await new Promise((r) => setTimeout(r, 10))
+				currentConcurrent--
+				return {
+					ok: true,
+					text: vi.fn().mockResolvedValue('# Content'),
+				} as unknown as Response
+			})
+
+		const { getToolkit } = await importSandboxModule()
+		await getToolkit()
+
+		// All 15 files should be written
+		expect(mocks.memFsWriteFile).toHaveBeenCalledTimes(15)
+		// Max concurrency should be bounded by batch size (10)
+		expect(maxConcurrent).toBeLessThanOrEqual(10)
+
+		fetchSpy.mockRestore()
+	})
+
 	it('clears cached promise after blob hydration failure and retries', async () => {
 		mocks.blobList.mockRejectedValueOnce(new Error('Blob service unavailable'))
 

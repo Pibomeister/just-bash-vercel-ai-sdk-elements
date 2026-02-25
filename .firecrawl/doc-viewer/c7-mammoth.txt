@@ -1,0 +1,95 @@
+### Embed Style Map in DOCX
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Embeds a style map into a DOCX file, allowing Mammoth.js to use the custom styles when converting the document. Supports various input types like file paths, buffers, and ArrayBuffers.
+
+```javascript
+mammoth.embedStyleMap({path: sourcePath}, "p[style-name='Section Title'] => h1:fresh")
+    .then(function(docx) {
+        fs.writeFile(destinationPath, docx.toBuffer(), callback);
+    });
+```
+
+--------------------------------
+
+### Mammoth.js API Documentation
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Provides details on the Mammoth.js API, including methods for embedding style maps, handling messages, and image conversion.
+
+```APIDOC
+mammoth.embedStyleMap(input, styleMap)
+  input: An object describing the source document. Supported inputs:
+    - Node.js: {path: string} or {buffer: Buffer}
+    - Browser: {arrayBuffer: ArrayBuffer}
+  styleMap: The style map to embed.
+  Returns: A promise that resolves with a document object.
+    - Call toArrayBuffer() on the result to get an ArrayBuffer.
+    - Call toBuffer() on the result to get a Buffer.
+
+mammoth.images.imgElement(func)
+  func: A function that takes an image argument and returns an object with attributes for the <img> element.
+    - image.contentType: The content type of the image (e.g., 'image/png').
+    - image.readAsArrayBuffer(): Returns a promise of an ArrayBuffer.
+    - image.readAsBuffer(): Returns a promise of a Buffer.
+    - image.readAsBase64String(): Returns a promise of a base64-encoded string.
+    - image.read([encoding]): Deprecated. Reads the image file with the specified encoding.
+  Returns: An image converter.
+
+Default Image Converter:
+  mammoth.images.dataUri
+
+Message Format:
+  {
+    type: string, // 'warning' or 'error'
+    message: string,
+    error?: Error // Optional thrown exception
+  }
+
+Security Considerations:
+  - Mammoth.js performs no sanitisation of source documents.
+  - Be cautious with untrusted user input due to potential risks like:
+    - 'javascript:' links in embedded HTML.
+    - Arbitrary file reads from the server if documents are processed insecurely.
+```
+
+--------------------------------
+
+### Basic Conversion to HTML
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Converts a .docx file to HTML using mammoth.convertToHtml. It returns a promise that resolves with the HTML value and any conversion messages. Handles potential errors during conversion.
+
+```javascript
+var mammoth = require("mammoth");
+
+mammoth.convertToHtml({path: "path/to/document.docx"})
+    .then(function(result){
+        var html = result.value; // The generated HTML
+        var messages = result.messages; // Any messages, such as warnings during conversion
+    })
+    .catch(function(error) {
+        console.error(error);
+    });
+```
+
+--------------------------------
+
+### Require Mammoth.js Browser Standalone
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Shows how to use the standalone browser version of Mammoth.js, which includes dependencies and works with module systems like CommonJS.
+
+```javascript
+var mammoth = require("mammoth/mammoth.browser");
+```
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Mammoth .docx to HTML converter > Usage > API > `mammoth.embedStyleMap(input, styleMap)`: * Returns a promise.
+  Call `toArrayBuffer()` on the value inside the promise to get an `ArrayBuffer` representing the new document.
+  Call `toBuffer()` on the value inside the promise to get a `Buffer` representing the new document.

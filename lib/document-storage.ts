@@ -4,6 +4,12 @@ import path from 'node:path'
 import { del, head, list, put } from '@vercel/blob'
 import type { DocumentMetadata } from '@/lib/types/documents'
 
+// Security note: All Vercel Blob `put()` calls use `access: 'public'` because
+// Vercel Blob does not support private/signed URLs. File downloads are proxied
+// through `/api/documents/[id]/file` which can enforce auth checks. The
+// `sidecarPath` field in metadata may contain a blob URL and MUST be stripped
+// from API responses to avoid leaking internal storage URLs.
+
 const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100 MB
 const BLOB_PREFIX = 'documents'
 
@@ -65,6 +71,26 @@ export async function saveSidecar(
 	await writeFile(sidecarPath, JSON.stringify(sidecar, null, 2), 'utf-8')
 	await updateMetadata(documentId, { sidecarPath })
 	return sidecarPath
+}
+
+export async function readSidecar(
+	documentId: string,
+): Promise<Record<string, unknown>> {
+	if (getStorageBackend() === 'blob') {
+		const pathname = blobPath(documentId, 'sidecar.json')
+		const blobMeta = await head(pathname)
+		const response = await fetch(blobMeta.url)
+		if (!response.ok) {
+			throw new Error(
+				`Failed to fetch sidecar for ${documentId}: ${response.statusText}`,
+			)
+		}
+		const raw = await response.text()
+		return JSON.parse(raw) as Record<string, unknown>
+	}
+
+	const raw = await readFile(getSidecarPath(documentId), 'utf-8')
+	return JSON.parse(raw) as Record<string, unknown>
 }
 
 function getMetadataPath(documentId: string): string {
@@ -185,6 +211,12 @@ export async function saveUploadedFile(file: File): Promise<{
 	return { documentId, filePath, metadata }
 }
 
+/**
+ * Non-atomic read-modify-write: reads existing metadata, merges `updates`, and
+ * writes back. All current callers are sequential per document so there is no
+ * race condition today. If concurrent access is needed in the future, consider
+ * ETag-based optimistic locking (blob) or file locking (local).
+ */
 export async function updateMetadata(
 	documentId: string,
 	updates: Partial<DocumentMetadata>,

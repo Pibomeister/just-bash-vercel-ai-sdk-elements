@@ -10,6 +10,7 @@ import {
 	getOriginalFile,
 	getSidecarPath,
 	listDocuments,
+	readSidecar,
 	saveMarkdown,
 	saveSidecar,
 	saveUploadedFile,
@@ -232,6 +233,28 @@ describe('saveSidecar', () => {
 			metadataPath,
 			expect.stringContaining('"sidecarPath"'),
 		)
+	})
+})
+
+describe('readSidecar', () => {
+	it('reads and parses sidecar.json from document directory', async () => {
+		vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ pages: 3 }))
+
+		const result = await readSidecar('doc-abc')
+
+		expect(result).toEqual({ pages: 3 })
+		expect(fs.readFile).toHaveBeenCalledWith(
+			path.join(uploadsDir, 'doc-abc', 'sidecar.json'),
+			'utf-8',
+		)
+	})
+
+	it('throws when sidecar file is missing', async () => {
+		vi.mocked(fs.readFile).mockRejectedValue(
+			new Error('ENOENT: no such file or directory'),
+		)
+
+		await expect(readSidecar('nonexistent')).rejects.toThrow()
 	})
 })
 

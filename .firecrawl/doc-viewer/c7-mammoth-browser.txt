@@ -1,0 +1,105 @@
+### Mammoth.js API Documentation
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Comprehensive API reference for Mammoth.js, detailing methods for document conversion and text extraction, including input types, options, and return values.
+
+```APIDOC
+mammoth.convertToHtml(input, options)
+  Converts the source document to HTML.
+  Parameters:
+    input: An object describing the source document. Supported inputs:
+      - Node.js: {path: string} (path to .docx file) or {buffer: Buffer}
+      - Browser: {arrayBuffer: ArrayBuffer}
+    options (optional): Configuration for conversion. Properties include:
+      - styleMap: Controls Word style to HTML mapping. Can be a string (newline-separated) or an array of strings.
+      - includeEmbeddedStyleMap: Boolean, whether to combine with embedded style maps (default: true).
+      - includeDefaultStyleMap: Boolean, whether to combine with default style maps (default: true).
+      - convertImage: Function to override default image conversion (default: inline <img>).
+      - ignoreEmptyParagraphs: Boolean, whether to ignore empty paragraphs (default: true).
+      - idPrefix: String to prepend to generated IDs (default: "").
+      - transformDocument: Function applied to the document before conversion (unstable API).
+  Returns:
+    A promise containing a result object with:
+      - value: The generated HTML (string).
+      - messages: An array of messages (errors, warnings) during conversion.
+```
+
+```APIDOC
+mammoth.convertToMarkdown(input, options)
+  Converts the source document to Markdown. (Deprecated)
+  Note: Generating HTML and converting it to Markdown separately is recommended.
+  Behaves identically to convertToHtml, but the 'value' property of the result contains Markdown.
+  Parameters and Returns are the same as mammoth.convertToHtml.
+```
+
+```APIDOC
+mammoth.extractRawText(input)
+  Extracts the raw text content from the document, ignoring all formatting.
+  Each paragraph is followed by two newlines.
+  Parameters:
+    input: An object describing the source document. Supported inputs:
+      - Node.js: {path: string} (path to .docx file) or {buffer: Buffer}
+      - Browser: {arrayBuffer: ArrayBuffer}
+  Returns:
+    A promise containing a result object with:
+      - value: The raw text extracted from the document (string).
+      - messages: An array of messages (errors, warnings) during extraction.
+```
+
+--------------------------------
+
+### Embed Style Map in DOCX
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Embeds a style map into a DOCX file, allowing Mammoth.js to use the custom styles when converting the document. Supports various input types like file paths, buffers, and ArrayBuffers.
+
+```javascript
+mammoth.embedStyleMap({path: sourcePath}, "p[style-name='Section Title'] => h1:fresh")
+    .then(function(docx) {
+        fs.writeFile(destinationPath, docx.toBuffer(), callback);
+    });
+```
+
+--------------------------------
+
+### Transform Paragraphs to Code Style
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Illustrates how to identify paragraphs with monospace fonts and apply a 'code' style, using `getDescendantsOfType` and `styleMap` for conversion to `<pre>` tags.
+
+```javascript
+const monospaceFonts = ["consolas", "courier", "courier new"];
+
+function transformParagraph(paragraph) {
+    var runs = mammoth.transforms.getDescendantsOfType(paragraph, "run");
+    var isMatch = runs.length > 0 && runs.every(function(run) {
+        return run.font && monospaceFonts.indexOf(run.font.toLowerCase()) !== -1;
+    });
+    if (isMatch) {
+        return {
+            ...paragraph,
+            styleId: "code",
+            styleName: "Code"
+        };
+    } else {
+        return paragraph;
+    }
+}
+
+var options = {
+    transformDocument: mammoth.transforms.paragraph(transformParagraph),
+    styleMap: [
+        "p[style-name='Code'] => pre:separator('\n')"
+    ]
+};
+
+```
+
+Source: https://github.com/mwilliamson/mammoth.js/blob/master/README.md
+
+Mammoth .docx to HTML converter > Usage > API > `mammoth.embedStyleMap(input, styleMap)`: * Returns a promise.
+  Call `toArrayBuffer()` on the value inside the promise to get an `ArrayBuffer` representing the new document.
+  Call `toBuffer()` on the value inside the promise to get a `Buffer` representing the new document.

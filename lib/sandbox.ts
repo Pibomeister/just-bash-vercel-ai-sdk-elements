@@ -12,12 +12,16 @@ import { decodeWithFallback } from '@/lib/encoding'
 let toolkitPromise: Promise<BashToolkit> | null = null
 let bashInstance: Bash | null = null
 
+const HYDRATION_CONCURRENCY = 10
+
 /**
  * Hydrate an InMemoryFs by fetching all .md and .json files from Vercel Blob.
  * Handles pagination via cursor. Files are written at /documents/{id}/...
  * paths within the InMemoryFs.
  */
 export async function hydrateFromBlob(memFs: InMemoryFs): Promise<void> {
+	// Phase 1: Collect all eligible blob references
+	const blobs: Array<{ pathname: string; url: string }> = []
 	let cursor: string | undefined
 
 	do {
@@ -27,28 +31,32 @@ export async function hydrateFromBlob(memFs: InMemoryFs): Promise<void> {
 		})
 
 		for (const blob of result.blobs) {
-			// Only hydrate .md and .json files
-			if (!blob.pathname.endsWith('.md') && !blob.pathname.endsWith('.json')) {
-				continue
-			}
-
-			try {
-				const response = await fetch(blob.url)
-				if (!response.ok) continue
-				const content = await response.text()
-
-				// Ensure parent directory exists in InMemoryFs
-				const filePath = `/${blob.pathname}`
-				const dir = filePath.substring(0, filePath.lastIndexOf('/'))
-				await mkdirRecursive(memFs, dir)
-				await memFs.writeFile(filePath, content)
-			} catch {
-				// Skip files that fail to fetch — resilience for partial availability
+			if (blob.pathname.endsWith('.md') || blob.pathname.endsWith('.json')) {
+				blobs.push({ pathname: blob.pathname, url: blob.url })
 			}
 		}
 
 		cursor = result.hasMore ? result.cursor : undefined
 	} while (cursor)
+
+	// Phase 2: Fetch in batches with bounded concurrency
+	for (let i = 0; i < blobs.length; i += HYDRATION_CONCURRENCY) {
+		const batch = blobs.slice(i, i + HYDRATION_CONCURRENCY)
+		const results = await Promise.allSettled(
+			batch.map(async (blob) => {
+				const response = await fetch(blob.url)
+				if (!response.ok) return
+				const content = await response.text()
+
+				const filePath = `/${blob.pathname}`
+				const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+				await mkdirRecursive(memFs, dir)
+				await memFs.writeFile(filePath, content)
+			}),
+		)
+		// Rejected promises are silently skipped — same resilience as before
+		void results
+	}
 }
 
 /**

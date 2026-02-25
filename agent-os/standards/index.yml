@@ -1,0 +1,37 @@
+# Agent OS Standards Index
+
+ai-elements:
+  compound-component-pattern:
+    description: Compound composition with named sub-components for AI elements
+  dual-mode-context:
+    description: Required vs optional context hooks for flexible provider usage
+  performance-memoization:
+    description: React.memo, Map caches, and subscriber patterns for streaming perf
+  provider-lift-pattern:
+    description: Optional provider to lift component state for sibling access
+
+css:
+  custom-animations:
+    description: Centralized CSS keyframes in globals.css with configurable timing
+  dark-mode:
+    description: Dark mode via .dark class with next-themes and media query fallback
+  oklch-color-system:
+    description: OKLch color format with semantic variable naming and Tailwind bridging
+
+forms:
+  form-architecture:
+    description: React Hook Form + Zod + shadcn/ui form component hierarchy
+
+global:
+  component-code-style:
+    description: Function declarations for UI, arrow functions for AI elements
+  prop-type-convention:
+    description: ComponentProps for wrapping, HTMLAttributes for raw HTML elements
+
+ui:
+  cva-variant-system:
+    description: class-variance-authority for components with 2+ variant axes
+  data-slot-convention:
+    description: data-slot attributes on all UI components for stable styling hooks
+  radix-primitive-wrapping:
+    description: Consistent pattern for wrapping Radix UI primitives with a11y

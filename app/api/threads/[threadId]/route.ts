@@ -1,20 +1,18 @@
 import * as mastraClient from '@/lib/mastra-client'
+import { requireResourceId } from '@/lib/resource-id'
 
 // ---------------------------------------------------------------------------
 // DELETE /api/threads/:threadId — delete with ownership validation
 // ---------------------------------------------------------------------------
 
 export async function DELETE(
-	req: Request,
+	_req: Request,
 	{ params }: { params: Promise<{ threadId: string }> },
 ) {
 	const { threadId } = await params
-	const { searchParams } = new URL(req.url)
-	const resourceId = searchParams.get('resourceId')
 
-	if (!resourceId) {
-		return new Response('Missing resourceId', { status: 400 })
-	}
+	// Derive resourceId from signed cookie — never trust query params
+	const { resourceId } = await requireResourceId()
 
 	try {
 		const thread = await mastraClient.getThreadById({ threadId })
