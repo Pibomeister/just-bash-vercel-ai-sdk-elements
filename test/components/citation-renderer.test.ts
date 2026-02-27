@@ -72,16 +72,46 @@ describe('buildSourceMap', () => {
 		expect(map.size).toBe(0)
 	})
 
-	it('ignores non-searchDocuments tool parts', () => {
+	it('extracts sources from bash citations field', () => {
 		const msg = makeMessage([
 			{
 				type: 'tool-bash',
 				state: 'output-available',
-				output: [{ index: 1, text: 'foo', score: 0.5, documentId: 'd1' }],
+				output: {
+					stdout: 'found /documents/doc-1/content.md',
+					citations: [{ index: 1, text: 'foo', documentId: 'd1' }],
+				},
 			} as never,
 		])
 		const map = buildSourceMap(msg)
-		expect(map.size).toBe(0)
+		expect(map.size).toBe(1)
+		expect(map.get(1)).toEqual({
+			index: 1,
+			text: 'foo',
+			score: null,
+			documentId: 'd1',
+		})
+	})
+
+	it('extracts sources from legacy __bashCitations field', () => {
+		const msg = makeMessage([
+			{
+				type: 'tool-bash',
+				state: 'output-available',
+				output: {
+					stdout: 'found /documents/doc-2/content.md',
+					__bashCitations: [{ index: 2, text: 'bar', documentId: 'd2' }],
+				},
+			} as never,
+		])
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(1)
+		expect(map.get(2)).toEqual({
+			index: 2,
+			text: 'bar',
+			score: null,
+			documentId: 'd2',
+		})
 	})
 
 	it('ignores searchDocuments parts not in output-available state', () => {
@@ -151,6 +181,63 @@ describe('buildSourceMap', () => {
 		expect(map.has(1)).toBe(true)
 		expect(map.has(2)).toBe(true)
 		expect(map.has(3)).toBe(true)
+	})
+
+	it('keeps shared indices stable across searchDocuments + bash', () => {
+		const msg = makeMessage([
+			{
+				type: 'tool-searchDocuments',
+				state: 'output-available',
+				output: [
+					{ index: 1, text: 'semantic hit', score: 0.91, documentId: 'doc-a' },
+				],
+			} as never,
+			{
+				type: 'tool-bash',
+				state: 'output-available',
+				output: {
+					citations: [{ index: 2, text: 'bash hit', documentId: 'doc-b' }],
+				},
+			} as never,
+		])
+
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(2)
+		expect(map.get(1)?.text).toBe('semantic hit')
+		expect(map.get(2)?.text).toBe('bash hit')
+	})
+
+	it('does not let bash overwrite an existing citation index', () => {
+		const msg = makeMessage([
+			{
+				type: 'tool-searchDocuments',
+				state: 'output-available',
+				output: [
+					{
+						index: 1,
+						text: 'semantic source',
+						score: 0.88,
+						documentId: 'doc-a',
+					},
+				],
+			} as never,
+			{
+				type: 'tool-bash',
+				state: 'output-available',
+				output: {
+					citations: [{ index: 1, text: 'bash source', documentId: 'doc-b' }],
+				},
+			} as never,
+		])
+
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(1)
+		expect(map.get(1)).toEqual({
+			index: 1,
+			text: 'semantic source',
+			score: 0.88,
+			documentId: 'doc-a',
+		})
 	})
 
 	it('skips results without a numeric index', () => {

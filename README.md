@@ -1,11 +1,21 @@
-# Just Bash + Vercel AI SDK + Elements
+# just-bash-vercel-ai-sdk-elements
 
-A Next.js 16 + React 19 app that combines:
-- an AI coding assistant with sandboxed filesystem tools,
-- document upload and semantic retrieval workflows,
-- and a reusable AI UI component system ("ai-elements").
+**The complete production blueprint for efficient AI agents.**
 
-This repository is designed as both a working product and a reference implementation for building modern AI interfaces with the AI SDK.
+Avengers-level stack:
+
+- **LlamaParse + LlamaIndex** -> agentic RAG with perfect citations
+- **Mastra Observational Memory** -> human-like long-term memory (Observer + Reflector, 5-40x compression, zero context rot)
+- **Vercel just-bash** -> secure sandboxed filesystem + tools
+- **Deterministic sidecar.json enrichment** -> every document gets a Bash-optimized cheat sheet (TOC, entities, navigation helpers, Mexican legal regex library, hash verification)
+- **Vercel ai-elements + streaming UI** -> custom tool-call rendering, thinking tokens, shadcn-compatible, full light/dark theming
+
+**Why it matters**
+Traditional RAG = dump everything -> token explosion.
+This stack = intelligent retrieval + memory compression + instant Bash navigation.
+Exactly how top coding agents stay fast and coherent.
+
+Live demo (coming soon) • [1-click Vercel deploy](https://vercel.com/new/clone?repository-url=https://github.com/Pibomeister/just-bash-vercel-ai-sdk-elements) • MIT
 
 ## Table of Contents
 
@@ -42,6 +52,18 @@ This repository is designed as both a working product and a reference implementa
 - Searchable document representations with metadata and sidecar navigation.
 - Citations plumbing from both shell-based lookup and semantic search.
 - Retrieval-aware answer rendering with source chips and inline citations.
+
+### Smart Document Enrichment
+For every uploaded file we generate a companion `sidecar.json` (deterministic, zero LLM cost):
+
+- Auto-detected title and document type
+- Full table of contents plus navigation commands
+- Extracted entities
+- Pre-built regex library (Mexican legal patterns included)
+- Source hash for integrity
+- Stats (lines, words, language)
+
+The Bash agent can instantly use these to `grep`, navigate, or reason over massive documents without re-parsing.
 
 ### 4) RAG Playground
 - Dedicated page for tuning retrieval behavior in isolation.

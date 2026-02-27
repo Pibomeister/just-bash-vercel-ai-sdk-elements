@@ -9,19 +9,19 @@ import { cn } from '@/lib/utils'
 
 const activeColorMap = {
 	cyan: {
-		bg: 'bg-prompt-box-cyan/12',
-		border: 'border-prompt-box-cyan/70',
-		text: 'text-prompt-box-cyan',
+		bg: 'oklch(0.78 0.11 225 / 0.20)',
+		border: 'oklch(0.78 0.11 225 / 0.90)',
+		text: 'oklch(0.84 0.12 225)',
 	},
 	purple: {
-		bg: 'bg-prompt-box-purple/12',
-		border: 'border-prompt-box-purple/70',
-		text: 'text-prompt-box-purple',
+		bg: 'oklch(0.72 0.15 310 / 0.20)',
+		border: 'oklch(0.72 0.15 310 / 0.90)',
+		text: 'oklch(0.79 0.16 310)',
 	},
 	amber: {
-		bg: 'bg-prompt-box-amber/12',
-		border: 'border-prompt-box-amber/70',
-		text: 'text-prompt-box-amber',
+		bg: 'oklch(0.80 0.14 80 / 0.20)',
+		border: 'oklch(0.80 0.14 80 / 0.90)',
+		text: 'oklch(0.86 0.15 80)',
 	},
 } as const
 
@@ -54,21 +54,31 @@ export const PromptBoxToolToggle = ({
 	return (
 		<button
 			type="button"
+			aria-label={label}
 			onClick={handleClick}
 			className={cn(
-				'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition-all duration-200',
+				'inline-flex h-8 items-center rounded-md border py-1 text-xs font-medium transition-all duration-200',
 				'hover:bg-accent',
 				isActive
-					? [colors.bg, colors.border, colors.text]
-					: 'border-transparent text-muted-foreground',
+					? 'gap-1 px-2 border'
+					: 'gap-0 border-transparent px-1.5 text-muted-foreground',
 				className,
 			)}
+			style={
+				isActive
+					? {
+							backgroundColor: colors.bg,
+							borderColor: colors.border,
+							color: colors.text,
+						}
+					: undefined
+			}
 			{...props}
 		>
 			<Icon
 				className={cn(
-					'size-3.5 shrink-0 transition-all duration-500',
-					isActive && 'rotate-[360deg] scale-[1.15]',
+					'size-4 shrink-0 transition-all duration-500',
+					isActive && 'rotate-[1turn] scale-[1.15]',
 				)}
 			/>
 			<span

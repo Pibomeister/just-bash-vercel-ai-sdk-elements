@@ -212,4 +212,201 @@ describe('POST /api/chat', () => {
 		expect(systemPrompt).toContain('Semantic Search')
 		expect(systemPrompt).toContain('higher scores mean better relevance')
 	})
+
+	it('returns stable bash citations payload on wrapped bash execute', async () => {
+		const bashExecute = vi.fn(async () => ({
+			stdout:
+				'1:/documents/123e4567-e89b-12d3-a456-426614174000/content.md:hello world',
+			stderr: '',
+			exitCode: 0,
+		}))
+		vi.mocked(getToolkit).mockResolvedValue({
+			tools: {
+				bash: {
+					description: 'bash',
+					inputSchema: {},
+					execute: bashExecute,
+				},
+			},
+			sandbox: {},
+		} as never)
+
+		const messages = [
+			{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+		]
+		const req = createJsonRequest({ messages })
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const wrappedBash = (callArgs.tools as Record<string, unknown>).bash as {
+			execute: (args: { command?: string }) => Promise<{
+				citations?: Array<{ index: number; documentId: string; text: string }>
+				__bashCitations?: Array<{
+					index: number
+					documentId: string
+					text: string
+				}>
+			}>
+		}
+
+		const wrappedResult = await wrappedBash.execute({
+			command:
+				'grep -n "hello" /documents/123e4567-e89b-12d3-a456-426614174000/content.md',
+		})
+
+		expect(wrappedResult.citations).toBeDefined()
+		expect(wrappedResult.__bashCitations).toBeDefined()
+		expect(wrappedResult.citations?.[0]).toMatchObject({
+			index: 1,
+			documentId: '123e4567-e89b-12d3-a456-426614174000',
+		})
+	})
+
+	it('extracts citation doc ID from relative document path in command', async () => {
+		const bashExecute = vi.fn(async () => ({
+			stdout: 'relevant legal excerpt',
+			stderr: '',
+			exitCode: 0,
+		}))
+		vi.mocked(getToolkit).mockResolvedValue({
+			tools: {
+				bash: {
+					description: 'bash',
+					inputSchema: {},
+					execute: bashExecute,
+				},
+			},
+			sandbox: {},
+		} as never)
+
+		const req = createJsonRequest({
+			messages: [
+				{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+			],
+		})
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const wrappedBash = (callArgs.tools as Record<string, unknown>).bash as {
+			execute: (args: { command?: string }) => Promise<{
+				citations?: Array<{ index: number; documentId: string; text: string }>
+			}>
+		}
+
+		const wrappedResult = await wrappedBash.execute({
+			command:
+				'grep -n "obligación" 123e4567-e89b-12d3-a456-426614174001/content.md',
+		})
+
+		expect(wrappedResult.citations?.[0]).toMatchObject({
+			index: 1,
+			documentId: '123e4567-e89b-12d3-a456-426614174001',
+		})
+		expect(wrappedResult.citations?.[0]?.text).toContain(
+			'relevant legal excerpt',
+		)
+	})
+
+	it('extracts citation doc ID when UUID appears only in stderr', async () => {
+		const bashExecute = vi.fn(async () => ({
+			stdout: '',
+			stderr:
+				'grep: /documents/123e4567-e89b-12d3-a456-426614174002/content.md: No such file or directory',
+			exitCode: 2,
+		}))
+		vi.mocked(getToolkit).mockResolvedValue({
+			tools: {
+				bash: {
+					description: 'bash',
+					inputSchema: {},
+					execute: bashExecute,
+				},
+			},
+			sandbox: {},
+		} as never)
+
+		const req = createJsonRequest({
+			messages: [
+				{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+			],
+		})
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const wrappedBash = (callArgs.tools as Record<string, unknown>).bash as {
+			execute: (args: { command?: string }) => Promise<{
+				citations?: Array<{ index: number; documentId: string; text: string }>
+			}>
+		}
+
+		const wrappedResult = await wrappedBash.execute({
+			command: 'grep -n "foo" content.md',
+		})
+
+		expect(wrappedResult.citations?.[0]).toMatchObject({
+			index: 1,
+			documentId: '123e4567-e89b-12d3-a456-426614174002',
+		})
+		expect(wrappedResult.citations?.[0]?.text).toContain(
+			'No such file or directory',
+		)
+	})
+
+	it('uses fallback excerpt when command references doc but output has no path echoes', async () => {
+		const bashExecute = vi.fn(async () => ({
+			stdout:
+				'This clause describes obligations and payment timelines without echoing paths.',
+			stderr: '',
+			exitCode: 0,
+		}))
+		vi.mocked(getToolkit).mockResolvedValue({
+			tools: {
+				bash: {
+					description: 'bash',
+					inputSchema: {},
+					execute: bashExecute,
+				},
+			},
+			sandbox: {},
+		} as never)
+
+		const req = createJsonRequest({
+			messages: [
+				{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+			],
+		})
+
+		await POST(req)
+
+		const callArgs = vi.mocked(streamText).mock.calls[0][0]
+		const wrappedBash = (callArgs.tools as Record<string, unknown>).bash as {
+			execute: (args: { command?: string }) => Promise<{
+				citations?: Array<{ index: number; documentId: string; text: string }>
+				__bashCitations?: Array<{
+					index: number
+					documentId: string
+					text: string
+				}>
+			}>
+		}
+
+		const wrappedResult = await wrappedBash.execute({
+			command:
+				'awk "NR>=10&&NR<=40" ./123e4567-e89b-12d3-a456-426614174003/content.md',
+		})
+
+		expect(wrappedResult.citations?.[0]).toMatchObject({
+			index: 1,
+			documentId: '123e4567-e89b-12d3-a456-426614174003',
+		})
+		expect(wrappedResult.citations?.[0]?.text).toContain(
+			'without echoing paths',
+		)
+		expect(wrappedResult.__bashCitations?.[0]?.documentId).toBe(
+			'123e4567-e89b-12d3-a456-426614174003',
+		)
+	})
 })

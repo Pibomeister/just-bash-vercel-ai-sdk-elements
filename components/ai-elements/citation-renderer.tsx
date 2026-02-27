@@ -41,6 +41,27 @@ export type EnrichedCitationSource = CitationSource & {
 	originalName: string
 }
 
+type RawCitation = {
+	index?: unknown
+	text?: unknown
+	score?: unknown
+	documentId?: unknown
+}
+
+function asCitationSource(item: RawCitation): CitationSource | null {
+	if (typeof item.index !== 'number') return null
+	if (typeof item.text !== 'string') return null
+	const score = typeof item.score === 'number' ? item.score : null
+	const documentId =
+		typeof item.documentId === 'string' ? item.documentId : null
+	return {
+		index: item.index,
+		text: item.text,
+		score,
+		documentId,
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Source map builder
 // ---------------------------------------------------------------------------
@@ -49,6 +70,19 @@ export function buildSourceMap(
 	message: UIMessage,
 ): Map<number, CitationSource> {
 	const map = new Map<number, CitationSource>()
+
+	console.log(
+		'[buildSourceMap] all parts:',
+		message.parts.map((p) => ({
+			type: p.type,
+			...('state' in p && typeof p.state === 'string'
+				? { state: p.state }
+				: {}),
+			...('toolName' in p && typeof p.toolName === 'string'
+				? { toolName: p.toolName }
+				: {}),
+		})),
+	)
 
 	for (const part of message.parts) {
 		if (!part.type.startsWith('tool-')) continue
@@ -61,35 +95,43 @@ export function buildSourceMap(
 		if (toolPart.state !== 'output-available') continue
 
 		if (toolName === 'searchDocuments') {
-			const output = toolPart.output as
-				| Array<{
-						index: number
-						text: string
-						score: number | null
-						documentId: string | null
-				  }>
-				| undefined
-
+			const output = toolPart.output
 			if (!Array.isArray(output)) continue
 
-			for (const result of output) {
-				if (typeof result.index === 'number') {
-					map.set(result.index, {
-						index: result.index,
-						text: result.text,
-						score: result.score,
-						documentId: result.documentId,
-					})
-				}
+			for (const raw of output as RawCitation[]) {
+				const parsed = asCitationSource(raw)
+				if (!parsed) continue
+				map.set(parsed.index, parsed)
 			}
 		}
 
 		if (toolName === 'bash') {
+			console.log(
+				'[buildSourceMap] found tool-bash part, state:',
+				toolPart.state,
+			)
+			console.log('[buildSourceMap] output typeof:', typeof toolPart.output)
+			console.log(
+				'[buildSourceMap] output keys:',
+				toolPart.output && typeof toolPart.output === 'object'
+					? Object.keys(toolPart.output as Record<string, unknown>)
+					: 'N/A (not an object)',
+			)
+			console.log(
+				'[buildSourceMap] output snapshot:',
+				JSON.stringify(toolPart.output)?.slice(0, 500),
+			)
+
 			const output = toolPart.output as
 				| {
 						stdout?: string
 						stderr?: string
 						exitCode?: number
+						citations?: Array<{
+							index: number
+							documentId: string
+							text: string
+						}>
 						__bashCitations?: Array<{
 							index: number
 							documentId: string
@@ -98,22 +140,45 @@ export function buildSourceMap(
 				  }
 				| undefined
 
-			if (!output?.__bashCitations || !Array.isArray(output.__bashCitations))
-				continue
+			console.log('[buildSourceMap] output?.citations:', output?.citations)
+			console.log(
+				'[buildSourceMap] output?.__bashCitations:',
+				output?.__bashCitations,
+			)
 
-			for (const citation of output.__bashCitations) {
-				if (typeof citation.index === 'number' && !map.has(citation.index)) {
+			const rawCitations = Array.isArray(output?.citations)
+				? output.citations
+				: Array.isArray(output?.__bashCitations)
+					? output.__bashCitations
+					: []
+
+			console.log('[buildSourceMap] rawCitations.length:', rawCitations.length)
+
+			if (rawCitations.length === 0) continue
+
+			for (const citation of rawCitations) {
+				if (
+					typeof citation.index === 'number' &&
+					typeof citation.text === 'string' &&
+					!map.has(citation.index)
+				) {
 					map.set(citation.index, {
 						index: citation.index,
 						text: citation.text,
 						score: null,
-						documentId: citation.documentId,
+						documentId:
+							typeof citation.documentId === 'string'
+								? citation.documentId
+								: null,
 					})
 				}
 			}
 		}
 	}
 
+	console.log('[buildSourceMap] final map size:', map.size, 'entries:', [
+		...map.keys(),
+	])
 	return map
 }
 
@@ -283,6 +348,10 @@ export const CitedMessageResponse = memo(function CitedMessageResponse({
 	)
 
 	if (sources.size === 0) {
+		console.log(
+			'[CitedMessageResponse] sources.size=0, raw text path. text has [N]?',
+			/\[\d+\]/.test(text),
+		)
 		return (
 			<Streamdown
 				className="size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
@@ -292,6 +361,12 @@ export const CitedMessageResponse = memo(function CitedMessageResponse({
 			</Streamdown>
 		)
 	}
+
+	console.log(
+		'[CitedMessageResponse] sources.size=',
+		sources.size,
+		', citation-processed path',
+	)
 
 	return (
 		<Streamdown

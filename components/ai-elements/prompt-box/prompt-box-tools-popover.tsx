@@ -1,6 +1,7 @@
 'use client'
 
 import {
+	BrainIcon,
 	GlobeIcon,
 	LightbulbIcon,
 	PaintbrushIcon,
@@ -41,10 +42,12 @@ const toolOptions: ToolOption[] = [
 
 export type PromptBoxToolsPopoverProps = {
 	className?: string
+	onOpenMemoryInspector?: () => void
 }
 
 export const PromptBoxToolsPopover = ({
 	className,
+	onOpenMemoryInspector,
 }: PromptBoxToolsPopoverProps) => {
 	const { activeTool } = usePromptInputController()
 	const [open, setOpen] = useState(false)
@@ -94,6 +97,22 @@ export const PromptBoxToolsPopover = ({
 						</button>
 					)
 				})}
+				{onOpenMemoryInspector && (
+					<button
+						type="button"
+						onClick={() => {
+							setOpen(false)
+							onOpenMemoryInspector()
+						}}
+						className={cn(
+							'mt-1 flex w-full items-center gap-2.5 rounded-md border-t px-2.5 pt-3 pb-2 text-sm transition-colors',
+							'hover:bg-accent',
+						)}
+					>
+						<BrainIcon className="size-4 shrink-0 text-muted-foreground" />
+						<span className="flex-1 text-left">Memory Inspector</span>
+					</button>
+				)}
 			</PopoverContent>
 		</Popover>
 	)

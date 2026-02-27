@@ -177,7 +177,56 @@ Always use find or ls to discover available documents — do not assume the file
 Be concise but informative in your responses.`
 
 const DOCUMENT_UUID_RE =
-	/\/documents\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//g
+	/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi
+
+function extractDocumentIds(text: string): Set<string> {
+	DOCUMENT_UUID_RE.lastIndex = 0
+	const ids = new Set<string>()
+	let m: RegExpExecArray | null
+	while ((m = DOCUMENT_UUID_RE.exec(text)) !== null) {
+		ids.add(m[1].toLowerCase())
+	}
+	return ids
+}
+
+function buildCitationExcerpt(args: {
+	documentId: string
+	command?: string
+	stdout?: string
+	stderr?: string
+}): string {
+	const { documentId, command, stdout, stderr } = args
+	const outputText = [stdout ?? '', stderr ?? '']
+		.filter(Boolean)
+		.join('\n')
+		.trim()
+	const outputLines = outputText.length > 0 ? outputText.split('\n') : []
+	const matchingLines = outputLines.filter((line) => line.includes(documentId))
+
+	if (matchingLines.length > 0) {
+		return matchingLines
+			.slice(0, 3)
+			.map((line) => {
+				const ci = line.indexOf(':')
+				return ci > -1 && line.slice(0, ci).includes('documents')
+					? line.slice(ci + 1)
+					: line
+			})
+			.join('\n')
+			.slice(0, 300)
+	}
+
+	if (outputText.length > 0) {
+		return outputText.slice(0, 300)
+	}
+
+	const trimmedCommand = command?.trim() ?? ''
+	if (trimmedCommand.length > 0) {
+		return `Command referenced document context: ${trimmedCommand.slice(0, 240)}`
+	}
+
+	return 'Document was referenced by the bash command.'
+}
 
 function wrapBashWithCitations(
 	rawTools: Record<string, unknown>,
@@ -200,14 +249,20 @@ function wrapBashWithCitations(
 			execute: async (args: { command?: string }) => {
 				const result = await bash.execute(args)
 
-				// Scan command + stdout for document UUIDs
-				const combined = (args.command ?? '') + '\n' + (result.stdout ?? '')
-				DOCUMENT_UUID_RE.lastIndex = 0
-				const docIds = new Set<string>()
-				let m: RegExpExecArray | null
-				while ((m = DOCUMENT_UUID_RE.exec(combined)) !== null) {
-					docIds.add(m[1])
-				}
+				console.log('[bash-citations] raw result keys:', Object.keys(result))
+				console.log('[bash-citations] command:', args.command?.slice(0, 120))
+
+				// Scan command + stdout + stderr for document UUIDs. UUIDs may appear
+				// in absolute paths (/documents/{id}/...), relative paths ({id}/...),
+				// or error output.
+				const combined = [
+					args.command ?? '',
+					result.stdout ?? '',
+					result.stderr ?? '',
+				].join('\n')
+				const docIds = extractDocumentIds(combined)
+
+				console.log('[bash-citations] found docIds:', [...docIds])
 
 				if (docIds.size === 0) return result
 
@@ -219,21 +274,12 @@ function wrapBashWithCitations(
 				}> = []
 				for (const docId of docIds) {
 					if (!docCitationMap.has(docId)) {
-						const lines = (result.stdout ?? '').split('\n')
-						const docLines = lines.filter((l) => l.includes(docId))
-						const text =
-							docLines.length > 0
-								? docLines
-										.slice(0, 3)
-										.map((l) => {
-											const ci = l.indexOf(':')
-											return ci > -1 && l.slice(0, ci).includes('documents')
-												? l.slice(ci + 1)
-												: l
-										})
-										.join('\n')
-										.slice(0, 300)
-								: (result.stdout ?? '').slice(0, 200)
+						const text = buildCitationExcerpt({
+							documentId: docId,
+							command: args.command,
+							stdout: result.stdout,
+							stderr: result.stderr,
+						})
 						docCitationMap.set(docId, { index: ++counter.value, text })
 					}
 					const entry = docCitationMap.get(docId)!
@@ -244,7 +290,22 @@ function wrapBashWithCitations(
 					})
 				}
 
-				return { ...result, __bashCitations: bashCitations }
+				// Keep `__bashCitations` for backward compatibility while exposing a
+				// stable, explicit `citations` field consumed by the UI.
+				const finalOutput = {
+					...result,
+					citations: bashCitations,
+					__bashCitations: bashCitations,
+				}
+				console.log(
+					'[bash-citations] returning with citations:',
+					JSON.stringify(bashCitations),
+				)
+				console.log(
+					'[bash-citations] final output keys:',
+					Object.keys(finalOutput),
+				)
+				return finalOutput
 			},
 		},
 	}

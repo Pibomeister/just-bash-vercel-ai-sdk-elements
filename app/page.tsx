@@ -4,12 +4,12 @@ import { useChat } from '@ai-sdk/react'
 import type { FileUIPart, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import {
-	Brain as BrainIcon,
 	Globe2 as GlobeIcon,
 	Lightbulb as LightbulbIcon,
 	Maximize2 as Maximize2Icon,
 	Paintbrush as PaintbrushIcon,
 	Paperclip as PaperclipIcon,
+	SlidersHorizontalIcon,
 	Telescope as TelescopeIcon,
 } from 'lucide-react'
 import { LayoutGroup, motion } from 'motion/react'
@@ -53,7 +53,6 @@ import {
 	PromptBoxContextProvider,
 	PromptBoxFileCard,
 	PromptBoxImageDialog,
-	PromptBoxNeonDivider,
 	PromptBoxPasteHandler,
 	PromptBoxSendButton,
 	PromptBoxToolsPopover,
@@ -555,7 +554,7 @@ function AttachmentTrayView() {
 }
 
 // ---------------------------------------------------------------------------
-// Dynamic Tool Pill (popover-only tools: create-image, deep-research)
+// Dynamic Tool Pill (popover-selected tools mirrored in composer)
 // ---------------------------------------------------------------------------
 
 function DynamicToolPill() {
@@ -563,6 +562,18 @@ function DynamicToolPill() {
 
 	return (
 		<>
+			<div
+				className={`overflow-hidden transition-all duration-200 ${
+					activeTool.value === 'search' ? 'max-w-40' : 'max-w-0'
+				}`}
+			>
+				<PromptBoxToolToggle
+					tool="search"
+					icon={GlobeIcon}
+					label="Search web"
+					activeColor="cyan"
+				/>
+			</div>
 			<div
 				className={`overflow-hidden transition-all duration-200 ${
 					activeTool.value === 'create-image' ? 'max-w-40' : 'max-w-0'
@@ -584,7 +595,7 @@ function DynamicToolPill() {
 					tool="deep-research"
 					icon={TelescopeIcon}
 					label="Deep research"
-					activeColor="cyan"
+					activeColor="purple"
 				/>
 			</div>
 		</>
@@ -614,7 +625,16 @@ function AssistantMessage({
 		if (message.role === 'user')
 			return new Map<number, EnrichedCitationSource>()
 		const raw = buildSourceMap(message)
-		return enrichSourceMap(raw, documents)
+		const enriched = enrichSourceMap(raw, documents)
+		console.log(
+			'[AssistantMessage] sources.size:',
+			enriched.size,
+			'parts.length:',
+			message.parts.length,
+			'documents.length:',
+			documents.length,
+		)
+		return enriched
 	}, [message, documents])
 
 	// P1-3: Show the memory badge on the last assistant message when memory is
@@ -819,163 +839,154 @@ export default function ChatPage() {
 	}, [setOpenHandler])
 
 	const renderPromptComposer = () => (
-		<TooltipProvider>
-			<Instructions
-				instructions={instructions}
-				onInstructionsChange={setInstructions}
-				value={activeIds}
-				onValueChange={setActiveIds}
-			>
-				<PromptInputProvider>
-					<PromptBoxContextProvider>
-						<PromptInput onSubmit={handleSubmit}>
-							<PromptInputHeader>
-								<AttachmentTrayView />
-							</PromptInputHeader>
+		<Instructions
+			instructions={instructions}
+			onInstructionsChange={setInstructions}
+			value={activeIds}
+			onValueChange={setActiveIds}
+		>
+			<PromptInputProvider>
+				<PromptBoxContextProvider>
+					<PromptInput onSubmit={handleSubmit}>
+						<PromptInputHeader>
+							<AttachmentTrayView />
+						</PromptInputHeader>
 
-							<PromptBoxVoiceRecorder />
-							<PromptBoxPasteHandler>
-								<PromptInputTextarea placeholder="Ask me to explore the sandbox..." />
-							</PromptBoxPasteHandler>
+						<PromptBoxVoiceRecorder />
+						<PromptBoxPasteHandler>
+							<PromptInputTextarea placeholder="Ask me to explore the sandbox..." />
+						</PromptBoxPasteHandler>
 
-							<PromptInputFooter>
-								<PromptInputTools>
-									<PromptInputActionMenu>
-										<PromptInputActionMenuTrigger tooltip="Attach">
-											<PaperclipIcon className="size-4" />
-										</PromptInputActionMenuTrigger>
-										<PromptInputActionMenuContent>
-											<PromptInputActionAddAttachments />
-										</PromptInputActionMenuContent>
-									</PromptInputActionMenu>
-
-									<PromptBoxToolsPopover />
-
-									<PromptBoxNeonDivider color="purple" />
-									<PromptBoxToolToggle
-										tool="search"
-										icon={GlobeIcon}
-										label="Search"
-										activeColor="cyan"
-									/>
-									<PromptBoxNeonDivider color="amber" />
-									<PromptBoxToolToggle
-										tool="think"
-										icon={LightbulbIcon}
-										label="Think"
-										activeColor="amber"
-									/>
-
-									<DynamicToolPill />
-
-									<InstructionsTrigger />
-								</PromptInputTools>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="size-8 shrink-0"
-									onClick={() => setMemoryInspectorOpen(true)}
-									title="Open Memory Inspector"
-								>
-									<BrainIcon className="size-4" />
-									<span className="sr-only">Memory</span>
-								</Button>
-								<PromptBoxSendButton status={status} onStop={stop} />
-							</PromptInputFooter>
-						</PromptInput>
-
-						<PromptBoxImageDialog />
-					</PromptBoxContextProvider>
-				</PromptInputProvider>
-				<InstructionsContent>
-					<InstructionsSearch />
-					<InstructionsList>
-						<InstructionsEmpty />
-						<InstructionsGroup heading="Available Instructions">
-							{instructions.map((instruction) => (
-								<InstructionsItem
-									key={instruction.id}
-									instruction={instruction}
+						<PromptInputFooter>
+							<PromptInputTools className="gap-1">
+								<PromptBoxToolsPopover
+									onOpenMemoryInspector={() => setMemoryInspectorOpen(true)}
 								/>
-							))}
-						</InstructionsGroup>
-					</InstructionsList>
-					<InstructionsFooter>
-						<InstructionsCreateTrigger />
-					</InstructionsFooter>
-				</InstructionsContent>
-				<InstructionsCreateDialog />
-			</Instructions>
-		</TooltipProvider>
+								<InstructionsTrigger
+									className="size-8 p-0"
+									size="icon-sm"
+									aria-label="Instructions"
+								>
+									<SlidersHorizontalIcon className="size-4" />
+								</InstructionsTrigger>
+								<PromptInputActionMenu>
+									<PromptInputActionMenuTrigger tooltip="Attach">
+										<PaperclipIcon className="size-4" />
+									</PromptInputActionMenuTrigger>
+									<PromptInputActionMenuContent>
+										<PromptInputActionAddAttachments />
+									</PromptInputActionMenuContent>
+								</PromptInputActionMenu>
+								<PromptBoxToolToggle
+									tool="think"
+									icon={LightbulbIcon}
+									label="Think"
+									activeColor="amber"
+								/>
+
+								<div className="flex items-center">
+									<DynamicToolPill />
+								</div>
+							</PromptInputTools>
+							<div className="ml-auto flex shrink-0 items-center">
+								<PromptBoxSendButton status={status} onStop={stop} />
+							</div>
+						</PromptInputFooter>
+					</PromptInput>
+
+					<PromptBoxImageDialog />
+				</PromptBoxContextProvider>
+			</PromptInputProvider>
+			<InstructionsContent>
+				<InstructionsSearch />
+				<InstructionsList>
+					<InstructionsEmpty />
+					<InstructionsGroup heading="Available Instructions">
+						{instructions.map((instruction) => (
+							<InstructionsItem
+								key={instruction.id}
+								instruction={instruction}
+							/>
+						))}
+					</InstructionsGroup>
+				</InstructionsList>
+				<InstructionsFooter>
+					<InstructionsCreateTrigger />
+				</InstructionsFooter>
+			</InstructionsContent>
+			<InstructionsCreateDialog />
+		</Instructions>
 	)
 
 	return (
-		<DocumentsProvider>
-			<DocumentViewerProvider>
-				<div className="flex min-h-dvh flex-col bg-background text-foreground">
-					<LayoutGroup id="main-chat-composer-layout">
-						<Conversation>
-							<ConversationContent className="mx-auto w-full max-w-3xl">
-								{isEmpty ? (
-									<ConversationEmptyState className="justify-start gap-0 p-0 pt-8 sm:pt-12">
-										<EmptyChatHero
-											composer={renderPromptComposer()}
-											composerLayoutId={composerLayoutId}
-											description="Explore a sandboxed filesystem with an AI assistant. Try running commands, reading files, or creating new ones."
-											onSuggestion={handleSuggestion}
-											showComposer={!hasSubmitted}
-											showSuggestions={!hasSubmitted}
-											suggestions={suggestions}
-											title="AI Bash Agent"
-										/>
-									</ConversationEmptyState>
-								) : (
-									messages.map((message, idx) => (
-										<AssistantMessage
-											key={message.id}
-											message={message}
-											isLastAssistantMessage={idx === messages.length - 1}
-											memoryActive={Boolean(threadId)}
-											chatReady={status === 'ready'}
-											onMemoryBadgeClick={() => setMemoryInspectorOpen(true)}
-										/>
-									))
-								)}
-							</ConversationContent>
-							<ConversationScrollButton />
-						</Conversation>
+		<TooltipProvider>
+			<DocumentsProvider>
+				<DocumentViewerProvider>
+					<div className="flex min-h-dvh flex-col bg-background text-foreground">
+						<LayoutGroup id="main-chat-composer-layout">
+							<Conversation>
+								<ConversationContent className="mx-auto w-full max-w-3xl">
+									{isEmpty ? (
+										<ConversationEmptyState className="justify-start gap-0 p-0 pt-8 sm:pt-12">
+											<EmptyChatHero
+												composer={renderPromptComposer()}
+												composerLayoutId={composerLayoutId}
+												description="Explore a sandboxed filesystem with an AI assistant. Try running commands, reading files, or creating new ones."
+												onSuggestion={handleSuggestion}
+												showComposer={!hasSubmitted}
+												showSuggestions={!hasSubmitted}
+												suggestions={suggestions}
+												title="AI Bash Agent"
+											/>
+										</ConversationEmptyState>
+									) : (
+										messages.map((message, idx) => (
+											<AssistantMessage
+												key={message.id}
+												message={message}
+												isLastAssistantMessage={idx === messages.length - 1}
+												memoryActive={Boolean(threadId)}
+												chatReady={status === 'ready'}
+												onMemoryBadgeClick={() => setMemoryInspectorOpen(true)}
+											/>
+										))
+									)}
+								</ConversationContent>
+								<ConversationScrollButton />
+							</Conversation>
 
-						{!isEmpty && (
-							<div className="mx-auto w-full max-w-3xl px-4 pt-2">
-								<FollowUpSuggestions
-									suggestions={followUpSuggestions}
-									isLoading={followUpLoading}
-									onSelect={handleFollowUp}
-								/>
-							</div>
-						)}
+							{!isEmpty && (
+								<div className="mx-auto w-full max-w-3xl px-4 pt-2">
+									<FollowUpSuggestions
+										suggestions={followUpSuggestions}
+										isLoading={followUpLoading}
+										onSelect={handleFollowUp}
+									/>
+								</div>
+							)}
 
-						{showBottomComposer && (
-							<div className="mx-auto mt-4 w-full max-w-3xl px-4 pb-4">
-								<motion.div
-									layoutId={composerLayoutId}
-									transition={composerTransition}
-								>
-									{renderPromptComposer()}
-								</motion.div>
-							</div>
-						)}
-					</LayoutGroup>
-				</div>
-				<DocumentViewer />
-				<UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
-				<MemoryInspector
-					open={memoryInspectorOpen}
-					onOpenChange={setMemoryInspectorOpen}
-					threadId={threadId}
-					resourceId={resourceId}
-				/>
-			</DocumentViewerProvider>
-		</DocumentsProvider>
+							{showBottomComposer && (
+								<div className="mx-auto mt-4 w-full max-w-3xl px-4 pb-4">
+									<motion.div
+										layoutId={composerLayoutId}
+										transition={composerTransition}
+									>
+										{renderPromptComposer()}
+									</motion.div>
+								</div>
+							)}
+						</LayoutGroup>
+					</div>
+					<DocumentViewer />
+					<UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
+					<MemoryInspector
+						open={memoryInspectorOpen}
+						onOpenChange={setMemoryInspectorOpen}
+						threadId={threadId}
+						resourceId={resourceId}
+					/>
+				</DocumentViewerProvider>
+			</DocumentsProvider>
+		</TooltipProvider>
 	)
 }

@@ -56,7 +56,7 @@ function DynamicToolPill() {
 				tool="deep-research"
 				icon={TelescopeIcon}
 				label="Deep research"
-				activeColor="cyan"
+				activeColor="purple"
 			/>
 		)
 	}
@@ -140,7 +140,9 @@ export default function PromptBoxDemo() {
 											activeColor="amber"
 										/>
 
-										<DynamicToolPill />
+										<div className="flex items-center">
+											<DynamicToolPill />
+										</div>
 									</PromptInputTools>
 									<PromptBoxSendButton />
 								</PromptInputFooter>

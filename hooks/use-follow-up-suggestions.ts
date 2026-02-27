@@ -57,7 +57,9 @@ export function useFollowUpSuggestions(
 		const prevStatus = prevStatusRef.current
 		prevStatusRef.current = status
 
-		if (prevStatus !== 'streaming' || status !== 'ready') return
+		// Trigger follow-up generation whenever a completion finishes.
+		// Some responses can transition submitted -> ready without a streaming phase.
+		if (status !== 'ready' || prevStatus === 'ready') return
 		if (messages.length < 2) return
 
 		const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
@@ -119,7 +121,7 @@ export function useFollowUpSuggestions(
 			.then(async (res) => {
 				if (!res.ok) throw new Error('Request failed')
 				const data = (await res.json()) as { suggestions?: string[] }
-				if (!controller.signal.aborted) {
+				if (!controller.signal.aborted && abortRef.current === controller) {
 					dispatch({
 						type: 'set-suggestions',
 						suggestions: data.suggestions ?? [],
@@ -130,7 +132,8 @@ export function useFollowUpSuggestions(
 				// Silently fail — suggestions are additive, not critical
 			})
 			.finally(() => {
-				if (!controller.signal.aborted) {
+				if (abortRef.current === controller) {
+					abortRef.current = null
 					dispatch({ type: 'set-loading', value: false })
 				}
 			})

@@ -200,7 +200,7 @@ export function Sidebar({ className = '' }: SidebarProps) {
 						size={isCollapsed ? 'icon' : 'sm'}
 						onClick={openUploadDialog}
 						disabled={!hasOpenHandler}
-						className={`w-full ${isCollapsed ? 'mx-auto' : 'justify-center gap-2'}`}
+						className={`w-full ${isCollapsed ? 'mx-auto' : 'justify-center gap-2 h-10'}`}
 						title={isCollapsed ? 'Upload Document' : undefined}
 					>
 						<Upload className="h-4 w-4" />
