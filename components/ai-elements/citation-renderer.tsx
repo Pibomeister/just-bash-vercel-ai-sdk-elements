@@ -85,8 +85,18 @@ export function buildSourceMap(
 	)
 
 	for (const part of message.parts) {
-		if (!part.type.startsWith('tool-')) continue
-		const toolName = part.type.slice(5)
+		// Resolve tool name from "tool-{name}" or "dynamic-tool" with toolName field
+		let toolName: string | null = null
+		if (part.type.startsWith('tool-')) {
+			toolName = part.type.slice(5)
+		} else if (
+			part.type === 'dynamic-tool' &&
+			'toolName' in part &&
+			typeof (part as Record<string, unknown>).toolName === 'string'
+		) {
+			toolName = (part as Record<string, unknown>).toolName as string
+		}
+		if (!toolName) continue
 
 		const toolPart = part as unknown as {
 			state: string
@@ -94,8 +104,18 @@ export function buildSourceMap(
 		}
 		if (toolPart.state !== 'output-available') continue
 
+		// Parse stringified output — stream serialization may deliver JSON strings
+		let rawOutput = toolPart.output
+		if (typeof rawOutput === 'string') {
+			try {
+				rawOutput = JSON.parse(rawOutput)
+			} catch {
+				// keep as string — not valid JSON
+			}
+		}
+
 		if (toolName === 'searchDocuments') {
-			const output = toolPart.output
+			const output = rawOutput
 			if (!Array.isArray(output)) continue
 
 			for (const raw of output as RawCitation[]) {
@@ -107,22 +127,24 @@ export function buildSourceMap(
 
 		if (toolName === 'bash') {
 			console.log(
-				'[buildSourceMap] found tool-bash part, state:',
+				'[buildSourceMap] found bash part, type:',
+				part.type,
+				'state:',
 				toolPart.state,
 			)
-			console.log('[buildSourceMap] output typeof:', typeof toolPart.output)
+			console.log('[buildSourceMap] output typeof:', typeof rawOutput)
 			console.log(
 				'[buildSourceMap] output keys:',
-				toolPart.output && typeof toolPart.output === 'object'
-					? Object.keys(toolPart.output as Record<string, unknown>)
+				rawOutput && typeof rawOutput === 'object'
+					? Object.keys(rawOutput as Record<string, unknown>)
 					: 'N/A (not an object)',
 			)
 			console.log(
 				'[buildSourceMap] output snapshot:',
-				JSON.stringify(toolPart.output)?.slice(0, 500),
+				JSON.stringify(rawOutput)?.slice(0, 500),
 			)
 
-			const output = toolPart.output as
+			const output = rawOutput as
 				| {
 						stdout?: string
 						stderr?: string

@@ -284,6 +284,111 @@ describe('buildSourceMap', () => {
 		expect(source?.score).toBeNull()
 		expect(source?.documentId).toBeNull()
 	})
+
+	// -----------------------------------------------------------------------
+	// dynamic-tool support
+	// -----------------------------------------------------------------------
+
+	it('extracts sources from dynamic-tool bash part', () => {
+		const msg = makeMessage([
+			{
+				type: 'dynamic-tool',
+				toolName: 'bash',
+				state: 'output-available',
+				output: {
+					stdout: 'some output',
+					citations: [{ index: 1, text: 'dynamic hit', documentId: 'doc-d' }],
+				},
+			} as never,
+		])
+
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(1)
+		expect(map.get(1)).toEqual({
+			index: 1,
+			text: 'dynamic hit',
+			score: null,
+			documentId: 'doc-d',
+		})
+	})
+
+	it('extracts sources from dynamic-tool searchDocuments part', () => {
+		const msg = makeMessage([
+			{
+				type: 'dynamic-tool',
+				toolName: 'searchDocuments',
+				state: 'output-available',
+				output: [
+					{
+						index: 1,
+						text: 'dynamic search',
+						score: 0.95,
+						documentId: 'doc-s',
+					},
+				],
+			} as never,
+		])
+
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(1)
+		expect(map.get(1)).toEqual({
+			index: 1,
+			text: 'dynamic search',
+			score: 0.95,
+			documentId: 'doc-s',
+		})
+	})
+
+	// -----------------------------------------------------------------------
+	// JSON-stringified output
+	// -----------------------------------------------------------------------
+
+	it('parses JSON-stringified bash output', () => {
+		const msg = makeMessage([
+			{
+				type: 'tool-bash',
+				state: 'output-available',
+				output: JSON.stringify({
+					stdout: 'grep result',
+					citations: [{ index: 1, text: 'stringified', documentId: 'doc-j' }],
+				}),
+			} as never,
+		])
+
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(1)
+		expect(map.get(1)?.text).toBe('stringified')
+		expect(map.get(1)?.documentId).toBe('doc-j')
+	})
+
+	it('parses JSON-stringified searchDocuments output', () => {
+		const msg = makeMessage([
+			{
+				type: 'tool-searchDocuments',
+				state: 'output-available',
+				output: JSON.stringify([
+					{ index: 1, text: 'json search', score: 0.8, documentId: 'doc-js' },
+				]),
+			} as never,
+		])
+
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(1)
+		expect(map.get(1)?.text).toBe('json search')
+	})
+
+	it('ignores non-JSON string output gracefully', () => {
+		const msg = makeMessage([
+			{
+				type: 'tool-bash',
+				state: 'output-available',
+				output: 'not valid json at all',
+			} as never,
+		])
+
+		const map = buildSourceMap(msg)
+		expect(map.size).toBe(0)
+	})
 })
 
 // ---------------------------------------------------------------------------

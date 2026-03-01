@@ -326,8 +326,19 @@ const MessagePartsRenderer = memo(function MessagePartsRenderer({
 						return null
 
 					default: {
-						// AI SDK v6 emits tool parts as "tool-{toolName}" (e.g. "tool-bash", "tool-readFile")
-						if (!part.type.startsWith('tool-')) return null
+						// AI SDK v6 emits tool parts as "tool-{toolName}" or "dynamic-tool" with toolName field
+						let resolvedToolName: string | null = null
+						if (part.type.startsWith('tool-')) {
+							resolvedToolName = part.type.slice(5)
+						} else if (
+							part.type === 'dynamic-tool' &&
+							'toolName' in part &&
+							typeof (part as Record<string, unknown>).toolName === 'string'
+						) {
+							resolvedToolName = (part as Record<string, unknown>)
+								.toolName as string
+						}
+						if (!resolvedToolName) return null
 
 						const toolPart = part as unknown as {
 							type: string
@@ -336,15 +347,24 @@ const MessagePartsRenderer = memo(function MessagePartsRenderer({
 							output?: unknown
 							errorText?: string
 						}
-						const toolName = part.type.slice(5) // "tool-bash" → "bash"
-						const { state, input, output, errorText } = toolPart
+						const toolName = resolvedToolName
+						const { state, input, errorText } = toolPart
+						// Parse stringified output — stream may deliver JSON strings
+						let parsedOutput = toolPart.output
+						if (typeof parsedOutput === 'string') {
+							try {
+								parsedOutput = JSON.parse(parsedOutput)
+							} catch {
+								// keep as string
+							}
+						}
 						const isRunning =
 							state !== 'output-available' &&
 							state !== 'output-error' &&
 							state !== 'output-denied'
 
 						if (toolName === 'bash') {
-							const result = output as
+							const result = parsedOutput as
 								| { stdout?: string; stderr?: string }
 								| undefined
 							const stdout = result?.stdout ?? ''
@@ -402,9 +422,13 @@ const MessagePartsRenderer = memo(function MessagePartsRenderer({
 							const category = detectFileCategory(filepath)
 							const fileContent =
 								state === 'output-available'
-									? typeof output === 'string'
-										? output
-										: (output as { content?: string } | null)?.content
+									? typeof parsedOutput === 'string'
+										? parsedOutput
+										: (
+												parsedOutput as {
+													content?: string
+												} | null
+											)?.content
 									: undefined
 
 							return (
@@ -490,7 +514,7 @@ const MessagePartsRenderer = memo(function MessagePartsRenderer({
 											</Shimmer>
 										)}
 										{state === 'output-available' && (
-											<SearchResultCards output={output} />
+											<SearchResultCards output={parsedOutput} />
 										)}
 										{(state === 'output-error' ||
 											state === 'output-denied') && (
@@ -519,7 +543,7 @@ const MessagePartsRenderer = memo(function MessagePartsRenderer({
 										</Shimmer>
 									)}
 									{state === 'output-available' && (
-										<ToolOutput output={output} errorText={errorText} />
+										<ToolOutput output={parsedOutput} errorText={errorText} />
 									)}
 								</ToolContent>
 							</Tool>
