@@ -11,9 +11,10 @@ async function parseWithSdk(
 	const { default: LlamaCloud } = await import('@llamaindex/llama-cloud')
 	const { getOriginalFile } = await import('@/lib/document-storage')
 
-	const client = new LlamaCloud({
-		apiKey: process.env.LLAMA_CLOUD_API_KEY,
-	})
+	const apiKey = process.env.LLAMA_CLOUD_API_KEY
+	if (!apiKey) throw new Error('LLAMA_CLOUD_API_KEY is required')
+
+	const client = new LlamaCloud({ apiKey })
 
 	const { buffer, metadata } = await getOriginalFile(documentId)
 	const file = new File([new Uint8Array(buffer)], metadata.originalName, {

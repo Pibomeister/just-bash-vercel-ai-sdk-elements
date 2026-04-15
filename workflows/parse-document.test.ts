@@ -77,6 +77,8 @@ function stubParse(
 }
 
 beforeEach(() => {
+	vi.stubEnv('LLAMA_CLOUD_API_KEY', 'test-api-key')
+
 	vi.mocked(getOriginalFile).mockResolvedValue({
 		buffer: Buffer.from('fake-pdf-content'),
 		metadata: {
@@ -130,6 +132,21 @@ describe('parseDocumentWorkflow', () => {
 		expect(updateMetadata).toHaveBeenCalledWith(DOC_ID, {
 			llamaJobId: 'job-123',
 		})
+	})
+
+	it('fails fast when LLAMA_CLOUD_API_KEY is not set', async () => {
+		vi.stubEnv('LLAMA_CLOUD_API_KEY', '')
+
+		await expect(parseDocumentWorkflow(DOC_ID, FILE_NAME)).rejects.toThrow(
+			'LLAMA_CLOUD_API_KEY is required',
+		)
+
+		expect(updateMetadata).toHaveBeenCalledWith(DOC_ID, {
+			status: 'failed',
+			error: 'LLAMA_CLOUD_API_KEY is required',
+		})
+
+		vi.unstubAllEnvs()
 	})
 
 	it('calls handleErrorStep and re-throws when LlamaParse fails', async () => {

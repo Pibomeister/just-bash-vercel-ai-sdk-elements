@@ -169,10 +169,12 @@ pnpm start
 Create a `.env.local` file as needed. Common variables used in this codebase include:
 
 - `OPENAI_API_KEY` - Required for OpenAI model calls.
-- `LLAMA_CLOUD_PROJECT_ID` - Enables semantic search tooling in chat flows.
+- `LLAMA_CLOUD_API_KEY` - Required for document parsing and the LlamaCloud indexing pipeline. Treat as secret; never expose to the client bundle.
+- `LLAMA_CLOUD_PROJECT_ID` - Enables semantic search tooling in chat flows and scopes the indexing pipeline.
+- `LLAMA_CLOUD_PIPELINE_NAME` - Optional override for the indexing pipeline name (default: `legal-documents`).
 - Additional provider or storage secrets depending on enabled integrations (for example blob/document infrastructure).
 
-Use least-privileged secrets and avoid committing any `.env*` files.
+Secrets must only be read from `process.env` in server-side code (API routes under `app/api/**`, server workflows, and `lib/**` modules loaded by the server). Never prefix secret names with `NEXT_PUBLIC_` and never reference them from `"use client"` components — both inline the value into the browser bundle. Use least-privileged secrets and avoid committing any `.env*` files (already excluded via `.gitignore`).
 
 ## Quality and Testing
 
